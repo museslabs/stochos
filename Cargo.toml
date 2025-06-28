@@ -1,0 +1,13 @@
+[package]
+name = "stochos"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.98"
+wayland-client = "0.31.10"
+wayland-server = "0.31.9"
+wayland-protocols = "0.32.8"
+wayland-protocols-wlr = { version = "0.3.8", features = ["client", "server"] }
