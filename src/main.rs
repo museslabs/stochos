@@ -1,7 +1,9 @@
+mod app;
+mod backend;
 mod input;
-mod overlay;
 mod render;
 
-fn main() {
-    overlay::show_overlay();
+fn main() -> anyhow::Result<()> {
+    let mut backend = backend::wayland::WaylandBackend::new()?;
+    app::run(&mut backend)
 }

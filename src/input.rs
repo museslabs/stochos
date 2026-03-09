@@ -54,8 +54,3 @@ pub fn keycode_to_char(kc: u32) -> Option<u8> {
         _ => None,
     }
 }
-
-pub fn keycode_to_hint(kc: u32) -> Option<u8> {
-    let ch = keycode_to_char(kc)?;
-    HINTS.contains(&ch).then_some(ch)
-}
