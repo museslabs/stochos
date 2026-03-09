@@ -15,7 +15,9 @@ use wayland_protocols_wlr::{
     virtual_pointer::v1::client::{zwlr_virtual_pointer_manager_v1, zwlr_virtual_pointer_v1},
 };
 
-use crate::input::{keycode_to_hint, InputState, COLS, HINTS, ROWS, SUB_COLS, SUB_HINTS, SUB_ROWS};
+use crate::input::{
+    keycode_to_char, keycode_to_hint, InputState, COLS, HINTS, ROWS, SUB_COLS, SUB_HINTS, SUB_ROWS,
+};
 use crate::render::render_grid;
 
 const BTN_LEFT: u32 = 0x110;
@@ -227,8 +229,17 @@ impl App {
                 }
             }
             _ => {
-                let Some(ch) = keycode_to_hint(key) else {
-                    return;
+                // Sub-grid uses the full char set; main grid is filtered to HINTS
+                let ch = if matches!(self.input, InputState::SubFirst { .. }) {
+                    let Some(c) = keycode_to_char(key) else {
+                        return;
+                    };
+                    c
+                } else {
+                    let Some(c) = keycode_to_hint(key) else {
+                        return;
+                    };
+                    c
                 };
                 self.handle_hint_char(ch);
             }
@@ -252,26 +263,11 @@ impl App {
                 self.needs_redraw = true;
             }
             InputState::SubFirst { col, row } => {
-                if SUB_HINTS.contains(&ch) {
-                    self.input = InputState::SubSecond {
-                        col,
-                        row,
-                        sub_first: ch,
-                    };
-                    self.needs_redraw = true;
-                }
-            }
-            InputState::SubSecond {
-                col,
-                row,
-                sub_first,
-            } => {
-                if SUB_HINTS.contains(&ch) {
+                if let Some(idx) = SUB_HINTS.iter().position(|&c| c == ch) {
+                    let sub_col = idx as u32 % SUB_COLS;
+                    let sub_row = idx as u32 / SUB_COLS;
                     let cell_w = self.screen_w / COLS;
                     let cell_h = self.screen_h / ROWS;
-                    let sub_col =
-                        SUB_HINTS.iter().position(|&c| c == sub_first).unwrap_or(0) as u32;
-                    let sub_row = SUB_HINTS.iter().position(|&c| c == ch).unwrap_or(0) as u32;
                     let sub_cell_w = cell_w / SUB_COLS;
                     let sub_cell_h = cell_h / SUB_ROWS;
                     let cx = col * cell_w + sub_col * sub_cell_w + sub_cell_w / 2;

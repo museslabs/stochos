@@ -5,7 +5,7 @@ use font8x8::UnicodeFonts;
 
 // Main grid
 const BG: [u8; 4] = [0x00, 0x00, 0x00, 0x00]; // fully transparent
-const CELL_NORMAL: [u8; 4] = [0x00, 0x00, 0x00, 0xAA]; // 67% dark
+const CELL_NORMAL: [u8; 4] = [0x00, 0x00, 0x00, 0x66]; // 40% dark
 const CELL_HIGHLIGHT: [u8; 4] = [0x14, 0x30, 0x14, 0xAA]; // dark green
 const CELL_DIM: [u8; 4] = [0x00, 0x00, 0x00, 0x00]; // transparent
 const TEXT_FIRST: [u8; 4] = [0x00, 0xDC, 0xFF, 0xFF]; // yellow  (RGB 255,220,0)
@@ -13,33 +13,17 @@ const TEXT_SECOND: [u8; 4] = [0xFF, 0xBE, 0x50, 0xFF]; // sky-blue (RGB 80,190,2
 const TEXT_HIGHLIGHT: [u8; 4] = [0x50, 0xFF, 0x50, 0xFF]; // bright lime
 const TEXT_DIM: [u8; 4] = [0x66, 0x66, 0x66, 0xAA]; // grey
 
-// Sub-grid (drawn inside the selected main cell) — same yellow/blue palette as main grid
+// Sub-grid (single-keypress horizontal strip inside selected cell)
 const SUB_CELL_NORMAL: [u8; 4] = [0x30, 0x10, 0x00, 0xAA]; // dark navy
-const SUB_CELL_HIGHLIGHT: [u8; 4] = [0x14, 0x30, 0x14, 0xAA]; // dark green (matches main)
-const SUB_CELL_DIM: [u8; 4] = [0x00, 0x00, 0x00, 0x00]; // transparent
 const SUB_TEXT_FIRST: [u8; 4] = [0x00, 0xDC, 0xFF, 0xFF]; // yellow (same as main)
-const SUB_TEXT_SECOND: [u8; 4] = [0xFF, 0xBE, 0x50, 0xFF]; // sky-blue (same as main)
-const SUB_TEXT_HIGHLIGHT: [u8; 4] = [0x50, 0xFF, 0x50, 0xFF]; // bright lime (same as main)
-const SUB_TEXT_DIM: [u8; 4] = [0x66, 0x66, 0x66, 0xAA]; // grey
 
 /// Scale factor for main-grid glyphs (8×FONT_SCALE pixels per glyph).
 const FONT_SCALE: u32 = 2;
 
 pub fn render_grid(buf: &mut [u8], w: u32, h: u32, input: &InputState) {
-    match input {
-        InputState::SubFirst { col, row } => {
-            render_sub_grid(buf, w, h, *col, *row, None);
-            return;
-        }
-        InputState::SubSecond {
-            col,
-            row,
-            sub_first,
-        } => {
-            render_sub_grid(buf, w, h, *col, *row, Some(*sub_first));
-            return;
-        }
-        _ => {}
+    if let InputState::SubFirst { col, row } = input {
+        render_sub_grid(buf, w, h, *col, *row);
+        return;
     }
 
     for px in buf.chunks_exact_mut(4) {
@@ -92,16 +76,9 @@ pub fn render_grid(buf: &mut [u8], w: u32, h: u32, input: &InputState) {
     }
 }
 
-/// Renders a 5×5 sub-grid inside the pixel area of the selected main cell.
-/// The rest of the screen stays fully transparent.
-fn render_sub_grid(
-    buf: &mut [u8],
-    w: u32,
-    h: u32,
-    main_col: u32,
-    main_row: u32,
-    typed_first: Option<u8>,
-) {
+/// Renders a 5×5 sub-grid inside the selected main cell.
+/// Each of the 25 cells has a unique single char — one keypress selects it.
+fn render_sub_grid(buf: &mut [u8], w: u32, h: u32, main_col: u32, main_row: u32) {
     for px in buf.chunks_exact_mut(4) {
         px.copy_from_slice(&BG);
     }
@@ -111,10 +88,12 @@ fn render_sub_grid(
     let cell_x = main_col * cell_w;
     let cell_y = main_row * cell_h;
 
-    const SUB_BORDER_BG: [u8; 4] = [0x50, 0x20, 0x00, 0xEE]; // navy (RGB 0,32,80)
-    fill_rect(buf, w, cell_x, cell_y, cell_w, cell_h, SUB_BORDER_BG);
+    // Semi-transparent background so cell borders are visible but content shows through
+    const SUB_BG: [u8; 4] = [0x30, 0x10, 0x00, 0x99];
+    fill_rect(buf, w, cell_x, cell_y, cell_w, cell_h, SUB_BG);
 
-    let border: [u8; 4] = [0x00, 0xA5, 0xFF, 0xFF]; // orange
+    // Amber outline around the selected main cell
+    let border: [u8; 4] = [0x00, 0xA5, 0xFF, 0xFF];
     fill_rect(buf, w, cell_x, cell_y, cell_w, 1, border);
     fill_rect(buf, w, cell_x, cell_y + cell_h - 1, cell_w, 1, border);
     fill_rect(buf, w, cell_x, cell_y, 1, cell_h, border);
@@ -123,48 +102,28 @@ fn render_sub_grid(
     let sub_cell_w = cell_w / SUB_COLS;
     let sub_cell_h = cell_h / SUB_ROWS;
 
-    const S: u32 = 1;
-
     for sub_row in 0..SUB_ROWS {
         for sub_col in 0..SUB_COLS {
             let x = cell_x + sub_col * sub_cell_w;
             let y = cell_y + sub_row * sub_cell_h;
+            let hint = SUB_HINTS[(sub_row * SUB_COLS + sub_col) as usize];
 
-            let first_hint = SUB_HINTS[sub_col as usize];
-            let second_hint = SUB_HINTS[sub_row as usize];
+            fill_rect(
+                buf,
+                w,
+                x + 1,
+                y + 1,
+                sub_cell_w - 2,
+                sub_cell_h - 2,
+                SUB_CELL_NORMAL,
+            );
 
-            let (cell_bg, c1, c2) = match typed_first {
-                None => (SUB_CELL_NORMAL, SUB_TEXT_FIRST, SUB_TEXT_SECOND),
-                Some(typed) => {
-                    if first_hint == typed {
-                        (SUB_CELL_HIGHLIGHT, SUB_TEXT_HIGHLIGHT, SUB_TEXT_SECOND)
-                    } else {
-                        (SUB_CELL_DIM, SUB_TEXT_DIM, SUB_TEXT_DIM)
-                    }
-                }
-            };
-
-            if sub_cell_w > 2 && sub_cell_h > 2 {
-                fill_rect(
-                    buf,
-                    w,
-                    x + 1,
-                    y + 1,
-                    sub_cell_w - 2,
-                    sub_cell_h - 2,
-                    cell_bg,
-                );
-            }
-
-            let char_w = 8 * S;
-            let char_h = 8 * S;
-            let gap = 1u32;
-            let label_w = char_w * 2 + gap;
-            let lx = x + sub_cell_w.saturating_sub(label_w) / 2;
+            // Scale-1 glyphs to fit inside the small sub-cells
+            let char_w = 8u32;
+            let char_h = 8u32;
+            let lx = x + sub_cell_w.saturating_sub(char_w) / 2;
             let ly = y + sub_cell_h.saturating_sub(char_h) / 2;
-
-            draw_glyph(buf, w, lx, ly, first_hint as char, c1, S);
-            draw_glyph(buf, w, lx + char_w + gap, ly, second_hint as char, c2, S);
+            draw_glyph(buf, w, lx, ly, hint as char, SUB_TEXT_FIRST, 1);
         }
     }
 }

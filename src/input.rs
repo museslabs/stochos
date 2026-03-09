@@ -3,10 +3,11 @@ pub const HINTS: &[u8] = b"asdfjkl;ghqwertyuiop";
 pub const COLS: u32 = HINTS.len() as u32;
 pub const ROWS: u32 = HINTS.len() as u32;
 
-/// Sub-grid: 5 chars → 5×5 = 25 sub-cells per selected main cell
-pub const SUB_HINTS: &[u8] = b"asdfg";
-pub const SUB_COLS: u32 = SUB_HINTS.len() as u32;
-pub const SUB_ROWS: u32 = SUB_HINTS.len() as u32;
+/// Sub-grid: 25 unique chars laid out in a 5×5 grid (single keypress selects a cell).
+/// Uses a broader set than HINTS so all 25 slots can be filled.
+pub const SUB_HINTS: &[u8] = b"asdfjkl;ghqwertyuiopzxcvb";
+pub const SUB_COLS: u32 = 5;
+pub const SUB_ROWS: u32 = 5;
 
 #[derive(Clone)]
 pub enum InputState {
@@ -14,10 +15,8 @@ pub enum InputState {
     First,
     /// First main-grid character pressed; waiting for second
     Second(u8),
-    /// Main cell chosen; waiting for first sub-grid character
+    /// Main cell chosen; waiting for a single sub-grid character
     SubFirst { col: u32, row: u32 },
-    /// First sub character pressed; waiting for second
-    SubSecond { col: u32, row: u32, sub_first: u8 },
     /// Sub-cell chosen; mouse positioned, waiting for Space
     Ready,
 }
