@@ -1,6 +1,8 @@
 mod app;
 mod backend;
 mod input;
+mod macro_store;
+mod mode;
 mod render;
 
 fn main() -> anyhow::Result<()> {
