@@ -49,7 +49,12 @@ pub fn run(backend: &mut dyn Backend) -> Result<()> {
                     // Cancel drag mode and exit
                     backend.exit()?;
                     break;
-                } else if ch == b'/' && matches!(state, InputState::Ready | InputState::SubFirst { .. }) {
+                } else if ch == b'/'
+                    && matches!(
+                        state,
+                        InputState::Ready { .. } | InputState::SubFirst { .. }
+                    )
+                {
                     // Enter drag mode: record origin, reset grid for end selection
                     drag_origin = target;
                     state = InputState::First;
@@ -77,7 +82,7 @@ fn advance(
     h: u32,
     backend: &mut dyn Backend,
 ) -> Result<bool> {
-    match state.clone() {
+    match *state {
         InputState::First => {
             if HINTS.contains(&ch) {
                 *state = InputState::Second(ch);
@@ -110,11 +115,16 @@ fn advance(
                 let cy = row * cell_h + sub_row * sub_cell_h + sub_cell_h / 2;
                 *target = Some((cx, cy));
                 backend.move_mouse(cx, cy)?;
-                *state = InputState::Ready;
+                *state = InputState::Ready {
+                    col,
+                    row,
+                    sub_col,
+                    sub_row,
+                };
                 return Ok(true);
             }
         }
-        InputState::Ready => {}
+        InputState::Ready { .. } => {}
     }
     Ok(false)
 }

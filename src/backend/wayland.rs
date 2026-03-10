@@ -53,12 +53,11 @@ impl WaylandBackend {
             screen_h: 0,
             configured: false,
             pending_key: None,
-            _keep: Vec::new(),
         };
 
         eq.roundtrip(&mut state).context("initial roundtrip")?;
 
-        if let Some(manager) = state.vp_manager.clone() {
+        if let Some(manager) = state.vp_manager.take() {
             state.vp = Some(manager.create_virtual_pointer(state.seat.as_ref(), &qh, ()));
         }
 
@@ -72,6 +71,19 @@ impl WaylandBackend {
         }
 
         Ok(WaylandBackend { state, eq, qh })
+    }
+
+    fn teardown_surface(&mut self) -> Result<()> {
+        if let Some(ls) = self.state.layer_surface.take() {
+            ls.destroy();
+        }
+        if let Some(s) = self.state.surface.take() {
+            s.destroy();
+        }
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after surface destroy")?;
+        Ok(())
     }
 }
 
@@ -105,9 +117,7 @@ impl Backend for WaylandBackend {
         surface.attach(Some(&buf), 0, 0);
         surface.damage_buffer(0, 0, width as i32, height as i32);
         surface.commit();
-
-        self.state._keep.push(buf);
-        drop(pool);
+        pool.destroy();
         Ok(())
     }
 
@@ -123,15 +133,7 @@ impl Backend for WaylandBackend {
     /// Destroy the overlay so the compositor removes it from the surface stack,
     /// then re-send motion to trigger a focus update, then click.
     fn click(&mut self, x: u32, y: u32) -> Result<()> {
-        if let Some(ls) = self.state.layer_surface.take() {
-            ls.destroy();
-        }
-        if let Some(s) = self.state.surface.take() {
-            s.destroy();
-        }
-        self.eq
-            .roundtrip(&mut self.state)
-            .context("roundtrip after surface destroy")?;
+        self.teardown_surface()?;
 
         if let Some(vp) = &self.state.vp {
             vp.motion_absolute(timestamp(), x, y, self.state.screen_w, self.state.screen_h);
@@ -155,15 +157,7 @@ impl Backend for WaylandBackend {
     }
 
     fn double_click(&mut self, x: u32, y: u32) -> Result<()> {
-        if let Some(ls) = self.state.layer_surface.take() {
-            ls.destroy();
-        }
-        if let Some(s) = self.state.surface.take() {
-            s.destroy();
-        }
-        self.eq
-            .roundtrip(&mut self.state)
-            .context("roundtrip after surface destroy")?;
+        self.teardown_surface()?;
 
         if let Some(vp) = &self.state.vp {
             vp.motion_absolute(timestamp(), x, y, self.state.screen_w, self.state.screen_h);
@@ -189,15 +183,7 @@ impl Backend for WaylandBackend {
     }
 
     fn drag_select(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) -> Result<()> {
-        if let Some(ls) = self.state.layer_surface.take() {
-            ls.destroy();
-        }
-        if let Some(s) = self.state.surface.take() {
-            s.destroy();
-        }
-        self.eq
-            .roundtrip(&mut self.state)
-            .context("roundtrip after surface destroy")?;
+        self.teardown_surface()?;
 
         let (sw, sh) = (self.state.screen_w, self.state.screen_h);
 
@@ -236,16 +222,7 @@ impl Backend for WaylandBackend {
     }
 
     fn exit(&mut self) -> Result<()> {
-        if let Some(ls) = self.state.layer_surface.take() {
-            ls.destroy();
-        }
-        if let Some(s) = self.state.surface.take() {
-            s.destroy();
-        }
-        self.eq
-            .roundtrip(&mut self.state)
-            .context("roundtrip on exit")?;
-        Ok(())
+        self.teardown_surface()
     }
 
     fn next_key(&mut self) -> Result<Option<KeyEvent>> {
@@ -279,8 +256,6 @@ struct WaylandState {
     screen_h: u32,
     configured: bool,
     pending_key: Option<KeyEvent>,
-
-    _keep: Vec<wl_buffer::WlBuffer>,
 }
 
 impl WaylandState {
@@ -288,7 +263,7 @@ impl WaylandState {
         let compositor = self.compositor.as_ref().expect("wl_compositor missing");
         let layer_shell = self
             .layer_shell
-            .as_ref()
+            .take()
             .expect("zwlr_layer_shell_v1 missing");
 
         let surface = compositor.create_surface(qh, ());

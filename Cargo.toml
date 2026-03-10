@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 wayland-client = "0.31"
-wayland-protocols = "0.32"
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 tempfile = "3"
 font8x8 = "0.2"

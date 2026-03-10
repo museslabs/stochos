@@ -9,7 +9,7 @@ pub const SUB_HINTS: &[u8] = b"asdfjkl;ghqwertyuiopzxcvb";
 pub const SUB_COLS: u32 = 5;
 pub const SUB_ROWS: u32 = 5;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum InputState {
     /// Waiting for the first main-grid character
     First,
@@ -17,8 +17,13 @@ pub enum InputState {
     Second(u8),
     /// Main cell chosen; waiting for a single sub-grid character
     SubFirst { col: u32, row: u32 },
-    /// Sub-cell chosen; mouse positioned, waiting for Space
-    Ready,
+    /// Sub-cell chosen; mouse positioned, waiting for Space/Enter
+    Ready {
+        col: u32,
+        row: u32,
+        sub_col: u32,
+        sub_row: u32,
+    },
 }
 
 /// Maps a Wayland key code to an ASCII character.

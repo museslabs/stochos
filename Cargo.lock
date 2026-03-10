@@ -184,7 +184,6 @@ dependencies = [
  "font8x8",
  "tempfile",
  "wayland-client",
- "wayland-protocols",
  "wayland-protocols-wlr",
 ]
 
