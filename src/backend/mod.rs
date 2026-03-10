@@ -2,10 +2,12 @@ use anyhow::Result;
 
 /// A decoded key event, platform-agnostic.
 pub enum KeyEvent {
-    Char(u8),
+    Char(char),
     Space,
     Enter,
     Escape,
+    Tab,
+    Backspace,
 }
 
 /// Platform backend — one implementation per OS/display-server.
@@ -36,6 +38,9 @@ pub trait Backend {
 
     /// Block until the next key event. Returns None when the overlay closes.
     fn next_key(&mut self) -> Result<Option<KeyEvent>>;
+
+    /// Recreate the overlay after a teardown (for macro recording).
+    fn reopen(&mut self) -> Result<()>;
 }
 
 pub mod wayland;

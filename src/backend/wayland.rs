@@ -53,6 +53,7 @@ impl WaylandBackend {
             screen_h: 0,
             configured: false,
             pending_key: None,
+            shift_held: false,
         };
 
         eq.roundtrip(&mut state).context("initial roundtrip")?;
@@ -225,6 +226,20 @@ impl Backend for WaylandBackend {
         self.teardown_surface()
     }
 
+    fn reopen(&mut self) -> Result<()> {
+        self.state.configured = false;
+        self.state.init_layer_surface(&self.qh);
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after reopen")?;
+        while !self.state.configured {
+            self.eq
+                .blocking_dispatch(&mut self.state)
+                .context("waiting for configure after reopen")?;
+        }
+        Ok(())
+    }
+
     fn next_key(&mut self) -> Result<Option<KeyEvent>> {
         loop {
             if let Some(key) = self.state.pending_key.take() {
@@ -256,6 +271,7 @@ struct WaylandState {
     screen_h: u32,
     configured: bool,
     pending_key: Option<KeyEvent>,
+    shift_held: bool,
 }
 
 impl WaylandState {
@@ -263,7 +279,7 @@ impl WaylandState {
         let compositor = self.compositor.as_ref().expect("wl_compositor missing");
         let layer_shell = self
             .layer_shell
-            .take()
+            .as_ref()
             .expect("zwlr_layer_shell_v1 missing");
 
         let surface = compositor.create_surface(qh, ());
@@ -362,16 +378,32 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
     ) {
         if let wl_keyboard::Event::Key {
             key,
-            state: WEnum::Value(wl_keyboard::KeyState::Pressed),
+            state: WEnum::Value(key_state),
             ..
         } = event
         {
-            state.pending_key = match key {
-                1 => Some(KeyEvent::Escape),
-                57 => Some(KeyEvent::Space),
-                28 => Some(KeyEvent::Enter),
-                _ => keycode_to_char(key).map(KeyEvent::Char),
-            };
+            match key_state {
+                wl_keyboard::KeyState::Pressed => match key {
+                    42 | 54 => state.shift_held = true,
+                    _ => {
+                        state.pending_key = match key {
+                            1 => Some(KeyEvent::Escape),
+                            57 => Some(KeyEvent::Space),
+                            28 => Some(KeyEvent::Enter),
+                            15 => Some(KeyEvent::Tab),
+                            14 => Some(KeyEvent::Backspace),
+                            3 if state.shift_held => Some(KeyEvent::Char('@')),
+                            _ => keycode_to_char(key).map(KeyEvent::Char),
+                        };
+                    }
+                },
+                wl_keyboard::KeyState::Released => {
+                    if key == 42 || key == 54 {
+                        state.shift_held = false;
+                    }
+                }
+                _ => {}
+            }
         }
     }
 }
