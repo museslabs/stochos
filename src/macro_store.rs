@@ -7,6 +7,7 @@ pub enum MacroAction {
     Move(String),
     Click(String),
     DoubleClick(String),
+    RightClick(String),
     Drag(String, String),
 }
 

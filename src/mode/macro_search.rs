@@ -71,6 +71,7 @@ pub(super) fn handle_key<B: Backend>(
                 selected: 0,
             }))
         }
+        _ => Ok(ModeTransition::Stay),
     }
 }
 

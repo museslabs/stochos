@@ -99,25 +99,42 @@ pub(super) fn handle_key<B: Backend>(
                 InputState::Ready { .. } => Ok(ModeTransition::Stay),
             }
         }
+        KeyEvent::Space | KeyEvent::Enter | KeyEvent::Delete
+            if target.is_some() && drag_origin.is_none() =>
+        {
+            let (x, y) = target.unwrap();
+            let current_keys = input_state.keys();
+            let mut new_actions = recorded_actions.to_vec();
+            match key {
+                KeyEvent::Space => {
+                    backend.click(x, y)?;
+                    new_actions.push(MacroAction::Click(current_keys));
+                }
+                KeyEvent::Enter => {
+                    backend.double_click(x, y)?;
+                    new_actions.push(MacroAction::DoubleClick(current_keys));
+                }
+                KeyEvent::Delete => {
+                    backend.right_click(x, y)?;
+                    new_actions.push(MacroAction::RightClick(current_keys));
+                }
+                _ => {}
+            }
+            backend.reopen()?;
+            Ok(ModeTransition::Enter(Mode::MacroRecording {
+                input_state: InputState::First,
+                target: None,
+                drag_origin: None,
+                recorded_actions: new_actions,
+                drag_start_keys: String::new(),
+            }))
+        }
         KeyEvent::Space | KeyEvent::Enter if target.is_some() => {
             let (x, y) = target.unwrap();
             let current_keys = input_state.keys();
             let mut new_actions = recorded_actions.to_vec();
-            if let Some((ox, oy)) = drag_origin {
-                backend.drag_select(ox, oy, x, y)?;
-                new_actions.push(MacroAction::Drag(drag_start_keys.to_owned(), current_keys));
-            } else {
-                match key {
-                    KeyEvent::Space => {
-                        backend.click(x, y)?;
-                        new_actions.push(MacroAction::Click(current_keys));
-                    }
-                    _ => {
-                        backend.double_click(x, y)?;
-                        new_actions.push(MacroAction::DoubleClick(current_keys));
-                    }
-                }
-            }
+            backend.drag_select(drag_origin.unwrap().0, drag_origin.unwrap().1, x, y)?;
+            new_actions.push(MacroAction::Drag(drag_start_keys.to_owned(), current_keys));
             backend.reopen()?;
             Ok(ModeTransition::Enter(Mode::MacroRecording {
                 input_state: InputState::First,

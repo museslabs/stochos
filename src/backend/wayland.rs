@@ -18,9 +18,9 @@ use wayland_protocols_wlr::{
 use anyhow::{Context, Result};
 
 use super::{Backend, KeyEvent};
-use crate::input::keycode_to_char;
 
 const BTN_LEFT: u32 = 0x110;
+const BTN_RIGHT: u32 = 0x111;
 
 /// Wayland backend. Holds the event queue alongside the state so that
 /// `Backend` methods can call `roundtrip` / `blocking_dispatch` freely
@@ -176,6 +176,32 @@ impl Backend for WaylandBackend {
                 vp.button(ts, BTN_LEFT, wl_pointer::ButtonState::Released);
                 vp.frame();
             }
+        }
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after click")?;
+        Ok(())
+    }
+
+    /// Destroy the overlay so the compositor removes it from the surface stack,
+    /// then re-send motion to trigger a focus update, then right click.
+    fn right_click(&mut self, x: u32, y: u32) -> Result<()> {
+        self.teardown_surface()?;
+
+        if let Some(vp) = &self.state.vp {
+            vp.motion_absolute(timestamp(), x, y, self.state.screen_w, self.state.screen_h);
+            vp.frame();
+        }
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after motion")?;
+
+        if let Some(vp) = &self.state.vp {
+            let ts = timestamp();
+            vp.button(ts, BTN_RIGHT, wl_pointer::ButtonState::Pressed);
+            vp.frame();
+            vp.button(ts, BTN_RIGHT, wl_pointer::ButtonState::Released);
+            vp.frame();
         }
         self.eq
             .roundtrip(&mut self.state)
@@ -392,6 +418,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
                             28 => Some(KeyEvent::Enter),
                             15 => Some(KeyEvent::Tab),
                             14 => Some(KeyEvent::Backspace),
+                            111 => Some(KeyEvent::Delete),
                             3 if state.shift_held => Some(KeyEvent::Char('@')),
                             _ => keycode_to_char(key).map(KeyEvent::Char),
                         };
@@ -453,4 +480,51 @@ fn timestamp() -> u32 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as u32
+}
+
+/// Maps a Wayland key code to an ASCII character.
+pub fn keycode_to_char(kc: u32) -> Option<char> {
+    match kc {
+        2 => Some('1'),
+        3 => Some('2'),
+        4 => Some('3'),
+        5 => Some('4'),
+        6 => Some('5'),
+        7 => Some('6'),
+        8 => Some('7'),
+        9 => Some('8'),
+        10 => Some('9'),
+        11 => Some('0'),
+        16 => Some('q'),
+        17 => Some('w'),
+        18 => Some('e'),
+        19 => Some('r'),
+        20 => Some('t'),
+        21 => Some('y'),
+        22 => Some('u'),
+        23 => Some('i'),
+        24 => Some('o'),
+        25 => Some('p'),
+        30 => Some('a'),
+        31 => Some('s'),
+        32 => Some('d'),
+        33 => Some('f'),
+        34 => Some('g'),
+        35 => Some('h'),
+        36 => Some('j'),
+        37 => Some('k'),
+        38 => Some('l'),
+        39 => Some(';'),
+        44 => Some('z'),
+        45 => Some('x'),
+        46 => Some('c'),
+        47 => Some('v'),
+        48 => Some('b'),
+        49 => Some('n'),
+        50 => Some('m'),
+        52 => Some('.'),
+        53 => Some('/'),
+        41 => Some('`'),
+        _ => None,
+    }
 }

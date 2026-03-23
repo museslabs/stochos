@@ -8,6 +8,7 @@ pub enum KeyEvent {
     Escape,
     Tab,
     Backspace,
+    Delete,
 }
 
 /// Platform backend — one implementation per OS/display-server.
@@ -29,6 +30,9 @@ pub trait Backend {
 
     /// Tear down the overlay, double click at (x, y), then return.
     fn double_click(&mut self, x: u32, y: u32) -> Result<()>;
+
+    /// Tear down the overlay, right click at (x, y), then return.
+    fn right_click(&mut self, x: u32, y: u32) -> Result<()>;
 
     /// Tear down the overlay, drag from (x1,y1) to (x2,y2), then return.
     fn drag_select(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) -> Result<()>;

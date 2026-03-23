@@ -82,6 +82,11 @@ pub fn replay_macro(
                     backend.double_click(x, y)?;
                 }
             }
+            MacroAction::RightClick(keys) => {
+                if let Some((x, y)) = keys_to_pos(keys, w, h) {
+                    backend.right_click(x, y)?;
+                }
+            }
             MacroAction::Drag(start_keys, end_keys) => {
                 if let (Some((x1, y1)), Some((x2, y2))) =
                     (keys_to_pos(start_keys, w, h), keys_to_pos(end_keys, w, h))
