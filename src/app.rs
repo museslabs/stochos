@@ -10,6 +10,7 @@ pub fn run<B: Backend>(backend: &mut B) -> Result<()> {
     let (w, h) = backend.screen_size();
     let mut pixels = vec![0u8; (w * h * 4) as usize];
     let mut macro_store = MacroStore::load();
+    let mut transition_stack: Vec<Mode> = Vec::new();
     let mut mode = Mode::Normal {
         input_state: InputState::First,
         target: None,
@@ -22,8 +23,15 @@ pub fn run<B: Backend>(backend: &mut B) -> Result<()> {
         match mode.handle_key(w, h, backend, &key, &mut macro_store)? {
             ModeTransition::Stay => continue,
             ModeTransition::Enter(m) => {
-                mode = m;
+                let prev = std::mem::replace(&mut mode, m);
+                transition_stack.push(prev);
                 mode.draw(backend, &mut pixels, w, h, &macro_store)?;
+            }
+            ModeTransition::Back => {
+                if let Some(prev) = transition_stack.pop() {
+                    mode = prev;
+                    mode.draw(backend, &mut pixels, w, h, &macro_store)?;
+                }
             }
             ModeTransition::Exit => {
                 backend.exit()?;

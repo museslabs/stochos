@@ -20,6 +20,7 @@ pub(super) fn handle_key<B: Backend>(
 ) -> anyhow::Result<ModeTransition> {
     match key {
         KeyEvent::Escape => Ok(ModeTransition::Exit),
+        KeyEvent::Backspace => Ok(ModeTransition::Back),
         KeyEvent::Space => {
             if let Some((x, y)) = target {
                 if let Some((ox, oy)) = drag_origin {
@@ -40,7 +41,6 @@ pub(super) fn handle_key<B: Backend>(
             }
             Ok(ModeTransition::Exit)
         }
-        KeyEvent::Char('/') if drag_origin.is_some() => Ok(ModeTransition::Exit),
         KeyEvent::Char('/')
             if matches!(
                 input_state,

@@ -18,6 +18,7 @@ pub(super) fn handle_key<B: Backend>(
     drag_start_keys: &str,
 ) -> anyhow::Result<ModeTransition> {
     match key {
+        KeyEvent::Backspace => Ok(ModeTransition::Back),
         KeyEvent::Char('`') => {
             if recorded_actions.is_empty() {
                 Ok(ModeTransition::Enter(Mode::Normal {

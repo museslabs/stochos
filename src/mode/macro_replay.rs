@@ -15,6 +15,7 @@ pub(super) fn handle_key<B: Backend>(
     macro_store: &MacroStore,
 ) -> anyhow::Result<ModeTransition> {
     match key {
+        KeyEvent::Backspace => Ok(ModeTransition::Back),
         KeyEvent::Escape => Ok(ModeTransition::Enter(Mode::Normal {
             input_state: InputState::First,
             target: None,
