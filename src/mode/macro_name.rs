@@ -14,12 +14,12 @@ pub(super) fn handle_key(
     macro_store: &mut MacroStore,
 ) -> anyhow::Result<ModeTransition> {
     match key {
-        KeyEvent::Escape => Ok(ModeTransition::Enter(Mode::Normal {
+        KeyEvent::Close => Ok(ModeTransition::Enter(Mode::Normal {
             input_state: InputState::First,
             target: None,
             drag_origin: None,
         })),
-        KeyEvent::Enter => {
+        KeyEvent::DoubleClick => {
             let name_str = if name.is_empty() {
                 format!("macro {}", macro_store.macros.len() + 1)
             } else {
@@ -37,7 +37,7 @@ pub(super) fn handle_key(
                 drag_origin: None,
             }))
         }
-        KeyEvent::Backspace => {
+        KeyEvent::Undo => {
             let mut name = name.to_vec();
             name.pop();
             Ok(ModeTransition::Enter(Mode::MacroName {
@@ -55,7 +55,7 @@ pub(super) fn handle_key(
                 actions: actions.to_vec(),
             }))
         }
-        KeyEvent::Space => {
+        KeyEvent::Click => {
             let mut name = name.to_vec();
             name.push(' ');
             Ok(ModeTransition::Enter(Mode::MacroName {

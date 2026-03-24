@@ -1,9 +1,8 @@
 use crate::{
-    app::replay_macro,
     backend::{Backend, KeyEvent},
     input::InputState,
     macro_store::MacroStore,
-    mode::{Mode, ModeTransition},
+    mode::{replay_macro, Mode, ModeTransition},
     render::render_macro_replay_wait,
 };
 
@@ -15,8 +14,8 @@ pub(super) fn handle_key<B: Backend>(
     macro_store: &MacroStore,
 ) -> anyhow::Result<ModeTransition> {
     match key {
-        KeyEvent::Backspace => Ok(ModeTransition::Back),
-        KeyEvent::Escape => Ok(ModeTransition::Enter(Mode::Normal {
+        KeyEvent::Undo => Ok(ModeTransition::Back),
+        KeyEvent::Close => Ok(ModeTransition::Enter(Mode::Normal {
             input_state: InputState::First,
             target: None,
             drag_origin: None,

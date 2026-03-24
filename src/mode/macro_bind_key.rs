@@ -11,13 +11,13 @@ pub(super) fn handle_key(
     actions: &[MacroAction],
 ) -> anyhow::Result<ModeTransition> {
     match key {
-        KeyEvent::Backspace => Ok(ModeTransition::Back),
-        KeyEvent::Escape => Ok(ModeTransition::Enter(Mode::Normal {
+        KeyEvent::Undo => Ok(ModeTransition::Back),
+        KeyEvent::Close => Ok(ModeTransition::Enter(Mode::Normal {
             input_state: InputState::First,
             target: None,
             drag_origin: None,
         })),
-        KeyEvent::Enter => Ok(ModeTransition::Enter(Mode::MacroName {
+        KeyEvent::DoubleClick => Ok(ModeTransition::Enter(Mode::MacroName {
             bind_key: None,
             name: Vec::new(),
             actions: actions.to_vec(),

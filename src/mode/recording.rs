@@ -1,9 +1,8 @@
 use crate::{
-    app::draw_grid,
     backend::{Backend, KeyEvent},
     input::{InputState, COLS, HINTS, ROWS, SUB_COLS, SUB_HINTS, SUB_ROWS},
     macro_store::MacroAction,
-    mode::{Mode, ModeTransition},
+    mode::{draw_grid, Mode, ModeTransition},
 };
 
 pub(super) fn handle_key<B: Backend>(
@@ -18,8 +17,8 @@ pub(super) fn handle_key<B: Backend>(
     drag_start_keys: &str,
 ) -> anyhow::Result<ModeTransition> {
     match key {
-        KeyEvent::Backspace => Ok(ModeTransition::Back),
-        KeyEvent::Char('`') => {
+        KeyEvent::Undo => Ok(ModeTransition::Back),
+        KeyEvent::MacroRecord => {
             if recorded_actions.is_empty() {
                 Ok(ModeTransition::Enter(Mode::Normal {
                     input_state: InputState::First,
@@ -32,7 +31,7 @@ pub(super) fn handle_key<B: Backend>(
                 }))
             }
         }
-        KeyEvent::Escape => Ok(ModeTransition::Enter(Mode::Normal {
+        KeyEvent::Close => Ok(ModeTransition::Enter(Mode::Normal {
             input_state: InputState::First,
             target: None,
             drag_origin: None,
@@ -99,22 +98,22 @@ pub(super) fn handle_key<B: Backend>(
                 InputState::Ready { .. } => Ok(ModeTransition::Stay),
             }
         }
-        KeyEvent::Space | KeyEvent::Enter | KeyEvent::Delete
+        KeyEvent::Click | KeyEvent::DoubleClick | KeyEvent::RightClick
             if target.is_some() && drag_origin.is_none() =>
         {
             let (x, y) = target.unwrap();
             let current_keys = input_state.keys();
             let mut new_actions = recorded_actions.to_vec();
             match key {
-                KeyEvent::Space => {
+                KeyEvent::Click => {
                     backend.click(x, y)?;
                     new_actions.push(MacroAction::Click(current_keys));
                 }
-                KeyEvent::Enter => {
+                KeyEvent::DoubleClick => {
                     backend.double_click(x, y)?;
                     new_actions.push(MacroAction::DoubleClick(current_keys));
                 }
-                KeyEvent::Delete => {
+                KeyEvent::RightClick => {
                     backend.right_click(x, y)?;
                     new_actions.push(MacroAction::RightClick(current_keys));
                 }
@@ -129,7 +128,7 @@ pub(super) fn handle_key<B: Backend>(
                 drag_start_keys: String::new(),
             }))
         }
-        KeyEvent::Space | KeyEvent::Enter if target.is_some() => {
+        KeyEvent::Click | KeyEvent::DoubleClick if target.is_some() => {
             let (x, y) = target.unwrap();
             let current_keys = input_state.keys();
             let mut new_actions = recorded_actions.to_vec();
@@ -144,7 +143,7 @@ pub(super) fn handle_key<B: Backend>(
                 drag_start_keys: String::new(),
             }))
         }
-        KeyEvent::Tab
+        KeyEvent::MacroMenu
             if target.is_some()
                 && drag_origin.is_none()
                 && matches!(

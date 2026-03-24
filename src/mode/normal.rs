@@ -2,11 +2,10 @@ use super::Mode;
 use anyhow::Ok;
 
 use crate::{
-    app::draw_grid,
     backend::{Backend, KeyEvent},
     input::{InputState, COLS, HINTS, ROWS, SUB_COLS, SUB_HINTS, SUB_ROWS},
     macro_store::MacroAction,
-    mode::ModeTransition,
+    mode::{draw_grid, ModeTransition},
 };
 
 pub(super) fn handle_key<B: Backend>(
@@ -19,9 +18,9 @@ pub(super) fn handle_key<B: Backend>(
     drag_origin: Option<(u32, u32)>,
 ) -> anyhow::Result<ModeTransition> {
     match key {
-        KeyEvent::Escape => Ok(ModeTransition::Exit),
-        KeyEvent::Backspace => Ok(ModeTransition::Back),
-        KeyEvent::Space => {
+        KeyEvent::Close => Ok(ModeTransition::Exit),
+        KeyEvent::Undo => Ok(ModeTransition::Back),
+        KeyEvent::Click => {
             if let Some((x, y)) = target {
                 if let Some((ox, oy)) = drag_origin {
                     backend.drag_select(ox, oy, x, y)?;
@@ -31,7 +30,7 @@ pub(super) fn handle_key<B: Backend>(
             }
             Ok(ModeTransition::Exit)
         }
-        KeyEvent::Enter => {
+        KeyEvent::DoubleClick => {
             if let Some((x, y)) = target {
                 if let Some((ox, oy)) = drag_origin {
                     backend.drag_select(ox, oy, x, y)?;
@@ -41,7 +40,7 @@ pub(super) fn handle_key<B: Backend>(
             }
             Ok(ModeTransition::Exit)
         }
-        KeyEvent::Delete if drag_origin.is_none() => {
+        KeyEvent::RightClick if drag_origin.is_none() => {
             if let Some((x, y)) = target {
                 backend.right_click(x, y)?;
             }
@@ -64,7 +63,7 @@ pub(super) fn handle_key<B: Backend>(
         {
             Ok(ModeTransition::Enter(Mode::MacroReplayWait))
         }
-        KeyEvent::Char('`')
+        KeyEvent::MacroRecord
             if matches!(input_state, InputState::First) && drag_origin.is_none() =>
         {
             Ok(ModeTransition::Enter(Mode::MacroRecording {
@@ -131,7 +130,7 @@ pub(super) fn handle_key<B: Backend>(
                 InputState::Ready { .. } => Ok(ModeTransition::Stay),
             }
         }
-        KeyEvent::Tab
+        KeyEvent::MacroMenu
             if matches!(
                 input_state,
                 InputState::SubFirst { .. } | InputState::Ready { .. }
@@ -141,7 +140,9 @@ pub(super) fn handle_key<B: Backend>(
                 actions: vec![MacroAction::Click(input_state.keys())],
             }))
         }
-        KeyEvent::Tab if matches!(input_state, InputState::First) && drag_origin.is_none() => {
+        KeyEvent::MacroMenu
+            if matches!(input_state, InputState::First) && drag_origin.is_none() =>
+        {
             Ok(ModeTransition::Enter(Mode::MacroSearch {
                 query: Vec::new(),
                 selected: 0,

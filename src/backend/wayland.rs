@@ -413,12 +413,13 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
                     42 | 54 => state.shift_held = true,
                     _ => {
                         state.pending_key = match key {
-                            1 => Some(KeyEvent::Escape),
-                            57 => Some(KeyEvent::Space),
-                            28 => Some(KeyEvent::Enter),
-                            15 => Some(KeyEvent::Tab),
-                            14 => Some(KeyEvent::Backspace),
-                            111 => Some(KeyEvent::Delete),
+                            1 => Some(KeyEvent::Close),
+                            57 => Some(KeyEvent::Click),
+                            28 => Some(KeyEvent::DoubleClick),
+                            15 => Some(KeyEvent::MacroMenu),
+                            14 => Some(KeyEvent::Undo),
+                            111 => Some(KeyEvent::RightClick),
+                            41 => Some(KeyEvent::MacroRecord),
                             3 if state.shift_held => Some(KeyEvent::Char('@')),
                             _ => keycode_to_char(key).map(KeyEvent::Char),
                         };
@@ -458,7 +459,7 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for WaylandState {
                 state.configured = true;
             }
             zwlr_layer_surface_v1::Event::Closed => {
-                state.pending_key = Some(KeyEvent::Escape);
+                state.pending_key = Some(KeyEvent::Close);
             }
             _ => {}
         }
@@ -524,7 +525,6 @@ pub fn keycode_to_char(kc: u32) -> Option<char> {
         50 => Some('m'),
         52 => Some('.'),
         53 => Some('/'),
-        41 => Some('`'),
         _ => None,
     }
 }

@@ -7,8 +7,9 @@ mod recording;
 
 use crate::{
     backend::{Backend, KeyEvent},
-    input::InputState,
+    input::{keys_to_pos, InputState},
     macro_store::{MacroAction, MacroStore},
+    render::{render_grid, render_rec_indicator},
 };
 
 pub enum ModeTransition {
@@ -150,4 +151,60 @@ impl Mode {
             ),
         }
     }
+}
+
+pub(super) fn draw_grid(
+    pixels: &mut [u8],
+    w: u32,
+    h: u32,
+    state: &InputState,
+    dragging: bool,
+    recording: bool,
+    backend: &mut dyn Backend,
+) -> anyhow::Result<()> {
+    render_grid(pixels, w, h, state, dragging);
+    if recording {
+        render_rec_indicator(pixels, w);
+    }
+    backend.present(pixels, w, h)
+}
+
+pub(super) fn replay_macro(
+    actions: &[MacroAction],
+    w: u32,
+    h: u32,
+    backend: &mut dyn Backend,
+) -> anyhow::Result<()> {
+    for action in actions {
+        match action {
+            MacroAction::Move(keys) => {
+                if let Some((x, y)) = keys_to_pos(keys, w, h) {
+                    backend.move_mouse(x, y)?;
+                }
+            }
+            MacroAction::Click(keys) => {
+                if let Some((x, y)) = keys_to_pos(keys, w, h) {
+                    backend.click(x, y)?;
+                }
+            }
+            MacroAction::DoubleClick(keys) => {
+                if let Some((x, y)) = keys_to_pos(keys, w, h) {
+                    backend.double_click(x, y)?;
+                }
+            }
+            MacroAction::RightClick(keys) => {
+                if let Some((x, y)) = keys_to_pos(keys, w, h) {
+                    backend.right_click(x, y)?;
+                }
+            }
+            MacroAction::Drag(start_keys, end_keys) => {
+                if let (Some((x1, y1)), Some((x2, y2))) =
+                    (keys_to_pos(start_keys, w, h), keys_to_pos(end_keys, w, h))
+                {
+                    backend.drag_select(x1, y1, x2, y2)?;
+                }
+            }
+        }
+    }
+    Ok(())
 }

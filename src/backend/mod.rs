@@ -3,12 +3,13 @@ use anyhow::Result;
 /// A decoded key event, platform-agnostic.
 pub enum KeyEvent {
     Char(char),
-    Space,
-    Enter,
-    Escape,
-    Tab,
-    Backspace,
-    Delete,
+    Click,
+    DoubleClick,
+    RightClick,
+    Close,
+    Undo,
+    MacroMenu,
+    MacroRecord,
 }
 
 /// Platform backend — one implementation per OS/display-server.

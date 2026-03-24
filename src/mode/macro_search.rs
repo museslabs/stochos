@@ -1,9 +1,8 @@
 use crate::{
-    app::replay_macro,
     backend::{Backend, KeyEvent},
     input::InputState,
     macro_store::MacroStore,
-    mode::{Mode, ModeTransition},
+    mode::{replay_macro, Mode, ModeTransition},
     render::render_macro_search,
 };
 
@@ -17,12 +16,12 @@ pub(super) fn handle_key<B: Backend>(
     macro_store: &MacroStore,
 ) -> anyhow::Result<ModeTransition> {
     match key {
-        KeyEvent::Escape => Ok(ModeTransition::Enter(Mode::Normal {
+        KeyEvent::Close => Ok(ModeTransition::Enter(Mode::Normal {
             input_state: InputState::First,
             target: None,
             drag_origin: None,
         })),
-        KeyEvent::Enter => {
+        KeyEvent::DoubleClick => {
             let results = macro_store.fuzzy_search(query);
             if let Some(entry) = results.get(selected).cloned() {
                 replay_macro(&entry.actions, width, height, backend)?;
@@ -35,7 +34,7 @@ pub(super) fn handle_key<B: Backend>(
                 }))
             }
         }
-        KeyEvent::Tab => {
+        KeyEvent::MacroMenu => {
             let results = macro_store.fuzzy_search(query);
             let new_selected = if results.is_empty() {
                 0
@@ -47,7 +46,7 @@ pub(super) fn handle_key<B: Backend>(
                 selected: new_selected,
             }))
         }
-        KeyEvent::Backspace => {
+        KeyEvent::Undo => {
             let mut query = query.to_vec();
             query.pop();
             Ok(ModeTransition::Enter(Mode::MacroSearch {
@@ -63,7 +62,7 @@ pub(super) fn handle_key<B: Backend>(
                 selected: 0,
             }))
         }
-        KeyEvent::Space => {
+        KeyEvent::Click => {
             let mut query = query.to_vec();
             query.push(' ');
             Ok(ModeTransition::Enter(Mode::MacroSearch {
