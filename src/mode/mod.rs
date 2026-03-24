@@ -14,6 +14,7 @@ use crate::{
 
 pub enum ModeTransition {
     Stay,
+    Redraw,
     Enter(Mode),
     Back,
     Exit,

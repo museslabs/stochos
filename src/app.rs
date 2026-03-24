@@ -19,6 +19,9 @@ pub fn run<B: Backend>(backend: &mut B) -> anyhow::Result<()> {
     while let Some(key) = backend.next_key()? {
         match mode.handle_key(w, h, backend, &key, &mut macro_store)? {
             ModeTransition::Stay => continue,
+            ModeTransition::Redraw => {
+                mode.draw(backend, &mut pixels, w, h, &macro_store)?;
+            }
             ModeTransition::Enter(m) => {
                 let prev = std::mem::replace(&mut mode, m);
                 transition_stack.push(prev);

@@ -2,10 +2,11 @@ use std::io::Write;
 use std::os::fd::AsFd;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use wayland_client::protocol::wl_pointer::{Axis, AxisSource};
 use wayland_client::{
     delegate_noop,
     protocol::{
-        wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
+        wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm,
         wl_shm_pool, wl_surface,
     },
     Connection, Dispatch, EventQueue, QueueHandle, WEnum,
@@ -72,6 +73,22 @@ impl WaylandBackend {
         }
 
         Ok(WaylandBackend { state, eq, qh })
+    }
+
+    fn scroll(&mut self, axis: Axis, value: f64, discrete: i32) -> Result<()> {
+        self.teardown_surface()?;
+
+        if let Some(vp) = &self.state.vp {
+            // axis_source identifies this as a wheel, not touchpad continuous scroll.
+            // axis_discrete sends both the continuous value and the notch count —
+            // bare axis() alone is often ignored by compositors expecting wheel events.
+            vp.axis_source(AxisSource::Wheel);
+            vp.axis_discrete(timestamp(), axis, value, discrete);
+            vp.frame();
+        }
+        self.state.conn.flush().context("flush after axis")?;
+
+        self.reopen()
     }
 
     fn teardown_surface(&mut self) -> Result<()> {
@@ -209,6 +226,22 @@ impl Backend for WaylandBackend {
         Ok(())
     }
 
+    fn scroll_up(&mut self) -> Result<()> {
+        self.scroll(Axis::VerticalScroll, -15.0, -1)
+    }
+
+    fn scroll_down(&mut self) -> Result<()> {
+        self.scroll(Axis::VerticalScroll, 15.0, 1)
+    }
+
+    fn scroll_left(&mut self) -> Result<()> {
+        self.scroll(Axis::HorizontalScroll, -15.0, -1)
+    }
+
+    fn scroll_right(&mut self) -> Result<()> {
+        self.scroll(Axis::HorizontalScroll, 15.0, 1)
+    }
+
     fn drag_select(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) -> Result<()> {
         self.teardown_surface()?;
 
@@ -328,6 +361,7 @@ impl WaylandState {
         layer_surface.set_exclusive_zone(-1);
         layer_surface
             .set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
+
         surface.commit();
 
         self.surface = Some(surface);
@@ -420,6 +454,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
                             14 => Some(KeyEvent::Undo),
                             111 => Some(KeyEvent::RightClick),
                             41 => Some(KeyEvent::MacroRecord),
+                            104 => Some(KeyEvent::ScrollUp),
+                            109 => Some(KeyEvent::ScrollDown),
+                            105 => Some(KeyEvent::ScrollLeft),
+                            106 => Some(KeyEvent::ScrollRight),
                             3 if state.shift_held => Some(KeyEvent::Char('@')),
                             _ => keycode_to_char(key).map(KeyEvent::Char),
                         };
@@ -467,6 +505,7 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for WaylandState {
 }
 
 delegate_noop!(WaylandState: ignore wl_compositor::WlCompositor);
+delegate_noop!(WaylandState: ignore wl_region::WlRegion);
 delegate_noop!(WaylandState: ignore wl_surface::WlSurface);
 delegate_noop!(WaylandState: ignore wl_shm::WlShm);
 delegate_noop!(WaylandState: ignore wl_shm_pool::WlShmPool);

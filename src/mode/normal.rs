@@ -148,6 +148,22 @@ pub(super) fn handle_key<B: Backend>(
                 selected: 0,
             }))
         }
+        KeyEvent::ScrollUp => {
+            backend.scroll_up()?;
+            Ok(ModeTransition::Redraw)
+        }
+        KeyEvent::ScrollDown => {
+            backend.scroll_down()?;
+            Ok(ModeTransition::Redraw)
+        }
+        KeyEvent::ScrollLeft => {
+            backend.scroll_left()?;
+            Ok(ModeTransition::Redraw)
+        }
+        KeyEvent::ScrollRight => {
+            backend.scroll_right()?;
+            Ok(ModeTransition::Redraw)
+        }
         _ => Ok(ModeTransition::Stay),
     }
 }

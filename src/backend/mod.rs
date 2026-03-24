@@ -10,6 +10,10 @@ pub enum KeyEvent {
     Undo,
     MacroMenu,
     MacroRecord,
+    ScrollUp,
+    ScrollDown,
+    ScrollLeft,
+    ScrollRight,
 }
 
 /// Platform backend — one implementation per OS/display-server.
@@ -37,6 +41,18 @@ pub trait Backend {
 
     /// Tear down the overlay, drag from (x1,y1) to (x2,y2), then return.
     fn drag_select(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) -> Result<()>;
+
+    /// Scroll the mouse wheel up.
+    fn scroll_up(&mut self) -> Result<()>;
+
+    /// Scroll the mouse wheel down.
+    fn scroll_down(&mut self) -> Result<()>;
+
+    /// Scroll the mouse wheel left (horizontal scroll).
+    fn scroll_left(&mut self) -> Result<()>;
+
+    /// Scroll the mouse wheel right (horizontal scroll).
+    fn scroll_right(&mut self) -> Result<()>;
 
     /// Close the overlay without clicking.
     fn exit(&mut self) -> Result<()>;
