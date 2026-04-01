@@ -1,19 +1,29 @@
-use crate::input::{cols, hints, rows, sub_cols, sub_hints, sub_rows, InputState};
+use crate::config::config;
+use crate::input::{dynamic_cols, dynamic_rows, hints, sub_cols, sub_hints, sub_rows, InputState};
 use font8x8::UnicodeFonts;
 
 // ARGB8888 — byte order on disk/in memory is [Blue, Green, Red, Alpha]
 
-// Main grid
-const CELL_NORMAL: [u8; 4] = [0x00, 0x00, 0x00, 0x66];
-const CELL_DRAG: [u8; 4] = [0x40, 0x00, 0x40, 0x88]; // dark purple
-const CELL_HIGHLIGHT: [u8; 4] = [0x14, 0x30, 0x14, 0xAA]; // dark green
+// Main grid - use functions to get configurable opacity
+fn cell_normal() -> [u8; 4] {
+    [0x00, 0x00, 0x00, config().appearance.cell_opacity]
+}
+fn cell_drag() -> [u8; 4] {
+    [0x40, 0x00, 0x40, config().appearance.drag_opacity]
+}
+fn cell_highlight() -> [u8; 4] {
+    [0x14, 0x30, 0x14, config().appearance.highlight_opacity]
+}
+
 const TEXT_FIRST: [u8; 4] = [0x00, 0xDC, 0xFF, 0xFF]; // yellow  (RGB 255,220,0)
 const TEXT_SECOND: [u8; 4] = [0xFF, 0xBE, 0x50, 0xFF]; // sky-blue (RGB 80,190,255)
 const TEXT_HIGHLIGHT: [u8; 4] = [0x50, 0xFF, 0x50, 0xFF]; // bright lime
 const TEXT_DIM: [u8; 4] = [0x66, 0x66, 0x66, 0xAA];
 
 // Sub-grid
-const SUB_CELL_NORMAL: [u8; 4] = [0x30, 0x10, 0x00, 0xAA]; // dark navy
+fn sub_cell_normal() -> [u8; 4] {
+    [0x30, 0x10, 0x00, config().appearance.sub_cell_opacity]
+}
 
 // Macro UI
 const PANEL_BG: [u8; 4] = [0x18, 0x0C, 0x00, 0xEE]; // very dark, warm
@@ -46,15 +56,15 @@ pub fn render_grid(buf: &mut [u8], w: u32, h: u32, input: &InputState, dragging:
     }
 
     let hints = hints();
-    let ncols = cols();
-    let nrows = rows();
+    let ncols = dynamic_cols(w);
+    let nrows = dynamic_rows(h);
     let cell_w = w / ncols;
     let cell_h = h / nrows;
     let char_w = 8 * FONT_SCALE;
     let char_h = 8 * FONT_SCALE;
     let gap = 3u32;
     let label_w = char_w * 2 + gap;
-    let cell_normal = if dragging { CELL_DRAG } else { CELL_NORMAL };
+    let cell_normal = if dragging { cell_drag() } else { cell_normal() };
 
     for row in 0..nrows {
         for col in 0..ncols {
@@ -67,7 +77,7 @@ pub fn render_grid(buf: &mut [u8], w: u32, h: u32, input: &InputState, dragging:
                 InputState::First => (Some(cell_normal), TEXT_FIRST, TEXT_SECOND),
                 InputState::Second(typed) => {
                     if first_hint == *typed {
-                        (Some(CELL_HIGHLIGHT), TEXT_HIGHLIGHT, TEXT_SECOND)
+                        (Some(cell_highlight()), TEXT_HIGHLIGHT, TEXT_SECOND)
                     } else {
                         (None, TEXT_DIM, TEXT_DIM)
                     }
@@ -302,8 +312,10 @@ fn render_sub_grid(
     let nsub_cols = sub_cols();
     let nsub_rows = sub_rows();
     let sub_hints = sub_hints();
-    let cell_w = c.w / cols();
-    let cell_h = h / rows();
+    let ncols = dynamic_cols(c.w);
+    let nrows = dynamic_rows(h);
+    let cell_w = c.w / ncols;
+    let cell_h = h / nrows;
     let cell_x = main_col * cell_w;
     let cell_y = main_row * cell_h;
 
@@ -332,9 +344,9 @@ fn render_sub_grid(
             let hint = sub_hints[(sub_row * nsub_cols + sub_col) as usize];
             let is_selected = selected == Some((sub_col, sub_row));
             let (bg, text) = if is_selected {
-                (CELL_HIGHLIGHT, TEXT_HIGHLIGHT)
+                (cell_highlight(), TEXT_HIGHLIGHT)
             } else {
-                (SUB_CELL_NORMAL, TEXT_FIRST)
+                (sub_cell_normal(), TEXT_FIRST)
             };
             c.fill_rect(x + 1, y + 1, sub_cell_w - 2, sub_cell_h - 2, bg);
             c.draw_glyph(x + glyph_ox, y + glyph_oy, hint, text, 1);

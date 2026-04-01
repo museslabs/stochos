@@ -92,13 +92,15 @@ Macros are resolution-independent and stored at `~/.config/stochos/macros.json`.
 
 Config file location: `~/.config/stochos/config.toml` (respects `XDG_CONFIG_HOME`).
 
-All fields are optional. Missing fields use defaults.
+All fields are optional. Missing fields use defaults. See `config.example.toml` for a detailed example.
 
 ```toml
 [grid]
 hints = ["a", "s", "d", "f", "j", "k", "l", ";", "g", "h", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p"]
 sub_hints = ["a", "s", "d", "f", "j", "k", "l", ";", "g", "h", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "z", "x", "c", "v", "b"]
 sub_cols = 5
+dynamic_grid = false
+target_cell_size = 80
 
 [keys]
 click = "space"
@@ -112,6 +114,12 @@ scroll_left = "left"
 scroll_right = "right"
 macro_menu = "tab"
 macro_record = "`"
+
+[appearance]
+cell_opacity = 102
+highlight_opacity = 170
+drag_opacity = 136
+sub_cell_opacity = 170
 ```
 
 ### Grid
@@ -119,6 +127,19 @@ macro_record = "`"
 - `hints` sets the characters for the main grid. Grid size is `len(hints) x len(hints)` (default 20x20 = 400 cells).
 - `sub_hints` sets the characters for the sub-grid. Sub-grid size is `sub_cols x (len(sub_hints) / sub_cols)` (default 5x5 = 25 cells).
 - `sub_cols` sets how many columns the sub-grid has.
+- `dynamic_grid` enables adaptive grid sizing based on screen dimensions (default: false).
+- `target_cell_size` sets target cell size in pixels when `dynamic_grid` is enabled (default: 80). Try 60-120 depending on screen size.
+
+### Appearance
+
+Control the visual appearance of the overlay:
+
+- `cell_opacity` — opacity for normal grid cells (0-255, default: 102)
+- `highlight_opacity` — opacity for selected/highlighted cells (0-255, default: 170)
+- `drag_opacity` — opacity during drag selection (0-255, default: 136)
+- `sub_cell_opacity` — opacity for sub-grid cells (0-255, default: 170)
+
+Lower values make the overlay more transparent, higher values make it more visible.
 
 ### Keys
 

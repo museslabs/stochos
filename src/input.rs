@@ -3,11 +3,15 @@ use crate::config::config;
 pub fn hints() -> &'static [char] {
     &config().grid.hints
 }
-pub fn cols() -> u32 {
-    config().cols()
+
+/// Get dynamic columns based on screen width
+pub fn dynamic_cols(screen_width: u32) -> u32 {
+    config().dynamic_cols(screen_width)
 }
-pub fn rows() -> u32 {
-    config().rows()
+
+/// Get dynamic rows based on screen height
+pub fn dynamic_rows(screen_height: u32) -> u32 {
+    config().dynamic_rows(screen_height)
 }
 
 pub fn sub_hints() -> &'static [char] {
@@ -71,8 +75,10 @@ pub fn keys_to_pos(keys: &str, w: u32, h: u32) -> Option<(u32, u32)> {
     let c1 = chars.next()?;
     let col = hints.iter().position(|&c| c == c0)? as u32;
     let row = hints.iter().position(|&c| c == c1)? as u32;
-    let cell_w = w / cols();
-    let cell_h = h / rows();
+    let ncols = dynamic_cols(w);
+    let nrows = dynamic_rows(h);
+    let cell_w = w / ncols;
+    let cell_h = h / nrows;
     match chars.next() {
         None => Some((col * cell_w + cell_w / 2, row * cell_h + cell_h / 2)),
         Some(c2) => {

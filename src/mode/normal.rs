@@ -3,7 +3,7 @@ use anyhow::Ok;
 
 use crate::{
     backend::{Backend, KeyEvent},
-    input::{cols, hints, rows, sub_cols, sub_hints, sub_rows, InputState},
+    input::{dynamic_cols, dynamic_rows, hints, sub_cols, sub_hints, sub_rows, InputState},
     macro_store::MacroAction,
     mode::{draw_grid, ModeTransition},
 };
@@ -88,8 +88,10 @@ pub(super) fn handle_key<B: Backend>(
                 InputState::Second(first) => {
                     let col = hints().iter().position(|c| c == first).unwrap_or(0) as u32;
                     let row = hints().iter().position(|c| c == ch).unwrap_or(0) as u32;
-                    let cell_w = width / cols();
-                    let cell_h = height / rows();
+                    let ncols = dynamic_cols(width);
+                    let nrows = dynamic_rows(height);
+                    let cell_w = width / ncols;
+                    let cell_h = height / nrows;
                     let cx = col * cell_w + cell_w / 2;
                     let cy = row * cell_h + cell_h / 2;
 
@@ -105,8 +107,10 @@ pub(super) fn handle_key<B: Backend>(
                     if let Some(idx) = sub_hints().iter().position(|c| c == ch) {
                         let sub_col = idx as u32 % sub_cols();
                         let sub_row = idx as u32 / sub_cols();
-                        let cell_w = width / cols();
-                        let cell_h = height / rows();
+                        let ncols = dynamic_cols(width);
+                        let nrows = dynamic_rows(height);
+                        let cell_w = width / ncols;
+                        let cell_h = height / nrows;
                         let sub_cell_w = cell_w / sub_cols();
                         let sub_cell_h = cell_h / sub_rows();
                         let cx = col * cell_w + sub_col * sub_cell_w + sub_cell_w / 2;

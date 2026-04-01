@@ -165,6 +165,10 @@ pub struct GridConfig {
     pub hints: Vec<char>,
     pub sub_hints: Vec<char>,
     pub sub_cols: u32,
+    /// Enable dynamic grid sizing that adapts to screen dimensions
+    pub dynamic_grid: bool,
+    /// Target cell size in pixels for dynamic grid (default: 80)
+    pub target_cell_size: u32,
 }
 
 impl Default for GridConfig {
@@ -179,6 +183,8 @@ impl Default for GridConfig {
                 'u', 'i', 'o', 'p', 'z', 'x', 'c', 'v', 'b',
             ],
             sub_cols: 5,
+            dynamic_grid: false,
+            target_cell_size: 80,
         }
     }
 }
@@ -258,11 +264,36 @@ impl KeyBindings {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AppearanceConfig {
+    /// Opacity for normal grid cells (0-255, default: 102)
+    pub cell_opacity: u8,
+    /// Opacity for highlighted cells (0-255, default: 170)
+    pub highlight_opacity: u8,
+    /// Opacity for dragging state cells (0-255, default: 136)
+    pub drag_opacity: u8,
+    /// Opacity for sub-grid cells (0-255, default: 170)
+    pub sub_cell_opacity: u8,
+}
+
+impl Default for AppearanceConfig {
+    fn default() -> Self {
+        Self {
+            cell_opacity: 102,        // 0x66
+            highlight_opacity: 170,   // 0xAA
+            drag_opacity: 136,        // 0x88
+            sub_cell_opacity: 170,    // 0xAA
+        }
+    }
+}
+
 #[derive(Default, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub grid: GridConfig,
     pub keys: KeyBindings,
+    pub appearance: AppearanceConfig,
 }
 
 impl Config {
@@ -284,6 +315,26 @@ impl Config {
 
     pub fn sub_rows(&self) -> u32 {
         self.grid.sub_hints.len() as u32 / self.grid.sub_cols
+    }
+
+    /// Calculate dynamic grid columns based on screen width
+    pub fn dynamic_cols(&self, screen_width: u32) -> u32 {
+        if !self.grid.dynamic_grid {
+            return self.cols();
+        }
+        let target = self.grid.target_cell_size;
+        let calculated = (screen_width / target).max(2).min(self.grid.hints.len() as u32);
+        calculated
+    }
+
+    /// Calculate dynamic grid rows based on screen height
+    pub fn dynamic_rows(&self, screen_height: u32) -> u32 {
+        if !self.grid.dynamic_grid {
+            return self.rows();
+        }
+        let target = self.grid.target_cell_size;
+        let calculated = (screen_height / target).max(2).min(self.grid.hints.len() as u32);
+        calculated
     }
 }
 
