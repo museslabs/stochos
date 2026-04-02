@@ -6,8 +6,8 @@ use wayland_client::protocol::wl_pointer::{Axis, AxisSource};
 use wayland_client::{
     delegate_noop,
     protocol::{
-        wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_region, wl_registry, wl_seat, wl_shm,
-        wl_shm_pool, wl_surface,
+        wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_region, wl_registry,
+        wl_seat, wl_shm, wl_shm_pool, wl_surface,
     },
     Connection, Dispatch, EventQueue, QueueHandle, WEnum,
 };
@@ -56,13 +56,10 @@ impl WaylandBackend {
             configured: false,
             pending_key: None,
             shift_held: false,
+            current_output: None,
         };
 
         eq.roundtrip(&mut state).context("initial roundtrip")?;
-
-        if let Some(manager) = state.vp_manager.take() {
-            state.vp = Some(manager.create_virtual_pointer(state.seat.as_ref(), &qh, ()));
-        }
 
         state.init_layer_surface(&qh);
         eq.roundtrip(&mut state)
@@ -74,6 +71,20 @@ impl WaylandBackend {
         }
 
         Ok(WaylandBackend { state, eq, qh })
+    }
+
+    fn ensure_vp(&mut self) {
+        if self.state.vp.is_some() {
+            return;
+        }
+        if let Some(manager) = &self.state.vp_manager {
+            self.state.vp = Some(manager.create_virtual_pointer_with_output(
+                self.state.seat.as_ref(),
+                self.state.current_output.as_ref(),
+                &self.qh,
+                (),
+            ));
+        }
     }
 
     fn scroll(&mut self, axis: Axis, value: f64, discrete: i32) -> Result<()> {
@@ -303,6 +314,7 @@ impl Backend for WaylandBackend {
     fn next_key(&mut self) -> Result<Option<KeyEvent>> {
         loop {
             if let Some(key) = self.state.pending_key.take() {
+                self.ensure_vp();
                 return Ok(Some(key));
             }
             if self.state.surface.is_none() {
@@ -332,6 +344,7 @@ struct WaylandState {
     configured: bool,
     pending_key: Option<KeyEvent>,
     shift_held: bool,
+    current_output: Option<wl_output::WlOutput>,
 }
 
 impl WaylandState {
@@ -396,6 +409,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
             }
             "wl_seat" => {
                 state.seat = Some(registry.bind(name, version.min(7), qh, ()));
+            }
+            "wl_output" => {
+                // Bind outputs so the compositor can reference them in wl_surface::enter.
+                let _: wl_output::WlOutput = registry.bind(name, version.min(4), qh, ());
             }
             "zwlr_layer_shell_v1" => {
                 state.layer_shell = Some(registry.bind(name, version.min(4), qh, ()));
@@ -496,9 +513,24 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for WaylandState {
     }
 }
 
+impl Dispatch<wl_surface::WlSurface, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _: &wl_surface::WlSurface,
+        event: wl_surface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_surface::Event::Enter { output } = event {
+            state.current_output = Some(output);
+        }
+    }
+}
+
 delegate_noop!(WaylandState: ignore wl_compositor::WlCompositor);
 delegate_noop!(WaylandState: ignore wl_region::WlRegion);
-delegate_noop!(WaylandState: ignore wl_surface::WlSurface);
+delegate_noop!(WaylandState: ignore wl_output::WlOutput);
 delegate_noop!(WaylandState: ignore wl_shm::WlShm);
 delegate_noop!(WaylandState: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(WaylandState: ignore wl_buffer::WlBuffer);
