@@ -95,6 +95,10 @@ Config file location: `~/.config/stochos/config.toml` (respects `XDG_CONFIG_HOME
 All fields are optional. Missing fields use defaults.
 
 ```toml
+font_size = 2  # Glyph scale multiplier for the 8x8 bitmap font: 1=8px, 2=16px, 3=24px
+sub_hint_font_size = 2  # Optional override for sub-grid hint glyphs; defaults to font_size when omitted
+panel_font_size = 2  # Optional override for macro/search popup panels; defaults to sub_hint_font_size, then font_size
+
 [grid]
 hints = ["a", "s", "d", "f", "j", "k", "l", ";", "g", "h", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p"]
 sub_hints = ["a", "s", "d", "f", "j", "k", "l", ";", "g", "h", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "z", "x", "c", "v", "b"]
@@ -137,6 +141,13 @@ border = "#00e676ff"             # Material Green (fresh, visible)
 border_dragging = "#e91e63ff"    # Material Pink (strong attention grabber)
 
 ```
+
+### Font
+
+- `font_size` sets the glyph scale multiplier. Stochos uses an `8x8` bitmap font, so each step adds `8px`: `1=8px`, `2=16px`, `3=24px`, and so on. Default is `2`.
+- Increase `font_size` for high-DPI displays such as `3` or `4` on 4K monitors. Valid range: `1-10`.
+- `sub_hint_font_size` sets the glyph scale multiplier for sub-grid hints. If omitted, it inherits `font_size`. It uses the same `8px` steps and `1-10` range, and still clamps down to fit inside each sub-cell.
+- `panel_font_size` sets the glyph scale multiplier for macro and search popup panels. If omitted, it inherits `sub_hint_font_size`, or `font_size` if that is also unset. It uses the same `8px` steps and `1-10` range.
 
 ### Grid
 

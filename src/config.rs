@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 use crate::backend::KeyEvent;
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
+const SCALE_RANGE: std::ops::RangeInclusive<u32> = 1..=10;
 
 pub fn init() {
     CONFIG.set(Config::load()).ok();
@@ -16,6 +17,22 @@ pub fn config() -> &'static Config {
 
 pub fn colors() -> &'static Colors {
     &config().colors
+}
+
+pub fn font_size() -> u32 {
+    config().font_size()
+}
+
+pub fn sub_hint_font_size() -> u32 {
+    config().sub_hint_font_size()
+}
+
+pub fn panel_font_size() -> u32 {
+    config().panel_font_size()
+}
+
+fn clamp_scale(scale: u32) -> u32 {
+    scale.clamp(*SCALE_RANGE.start(), *SCALE_RANGE.end())
 }
 
 /// Platform-agnostic key representation.
@@ -362,12 +379,28 @@ impl Default for Colors {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub grid: GridConfig,
     pub keys: KeyBindings,
     pub colors: Colors,
+    pub font_size: u32,
+    pub sub_hint_font_size: Option<u32>,
+    pub panel_font_size: Option<u32>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            grid: GridConfig::default(),
+            keys: KeyBindings::default(),
+            colors: Colors::default(),
+            font_size: 2,
+            sub_hint_font_size: None,
+            panel_font_size: None,
+        }
+    }
 }
 
 impl Config {
@@ -377,6 +410,21 @@ impl Config {
             Ok(data) => toml::from_str(&data).unwrap_or_default(),
             Err(_) => Config::default(),
         }
+    }
+
+    pub fn font_size(&self) -> u32 {
+        clamp_scale(self.font_size)
+    }
+
+    pub fn sub_hint_font_size(&self) -> u32 {
+        self.sub_hint_font_size
+            .map_or_else(|| self.font_size(), clamp_scale)
+    }
+
+    pub fn panel_font_size(&self) -> u32 {
+        self.panel_font_size
+            .or(self.sub_hint_font_size)
+            .map_or_else(|| self.font_size(), clamp_scale)
     }
 
     pub fn cols(&self) -> u32 {
