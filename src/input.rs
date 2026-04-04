@@ -78,12 +78,12 @@ pub fn keys_to_pos(keys: &str, w: u32, h: u32) -> Option<(u32, u32)> {
     let row = hints.iter().position(|&c| c == c1)? as u32;
     let ncols = dynamic_cols(w);
     let nrows = dynamic_rows(h);
-    
+
     // Reject hints that map outside the currently rendered grid
     if col >= ncols || row >= nrows {
         return None;
     }
-    
+
     let cell_w = w / ncols;
     let cell_h = h / nrows;
     match chars.next() {

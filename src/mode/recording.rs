@@ -54,12 +54,12 @@ pub(super) fn handle_key<B: Backend>(
                     let row = hints().iter().position(|c| c == ch).unwrap_or(0) as u32;
                     let ncols = dynamic_cols(width);
                     let nrows = dynamic_rows(height);
-                    
+
                     // Reject if outside the currently rendered grid
                     if col >= ncols || row >= nrows {
                         return Ok(ModeTransition::Stay);
                     }
-                    
+
                     let cell_w = width / ncols;
                     let cell_h = height / nrows;
                     let cx = col * cell_w + cell_w / 2;

@@ -34,8 +34,7 @@ pub struct X11Backend {
 
 impl X11Backend {
     pub fn new() -> Result<Self> {
-        let (conn, screen_num) =
-            RustConnection::connect(None).context("connect to X11 display")?;
+        let (conn, screen_num) = RustConnection::connect(None).context("connect to X11 display")?;
 
         // Verify XTest extension is available
         conn.xtest_get_version(2, 2)
@@ -122,9 +121,7 @@ impl X11Backend {
             // Sync to ensure the server has processed the unmap before we
             // simulate input — otherwise the overlay may intercept our own
             // fake events.
-            self.conn
-                .sync()
-                .context("sync after teardown")?;
+            self.conn.sync().context("sync after teardown")?;
             self.mapped = false;
         }
         Ok(())
@@ -132,16 +129,7 @@ impl X11Backend {
 
     fn warp_and_sync(&self, x: u32, y: u32) -> Result<()> {
         self.conn
-            .warp_pointer(
-                x11rb::NONE,
-                self.root,
-                0,
-                0,
-                0,
-                0,
-                x as i16,
-                y as i16,
-            )
+            .warp_pointer(x11rb::NONE, self.root, 0, 0, 0, 0, x as i16, y as i16)
             .context("warp pointer")?;
         self.conn.flush().context("flush after warp")?;
         self.conn.sync().context("sync after warp")?;
