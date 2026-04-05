@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use x11rb::connection::{Connection, RequestConnection};
 use x11rb::protocol::xproto::*;
@@ -86,16 +88,10 @@ impl X11Backend {
 
         conn.flush().context("flush after map")?;
 
-        // Grab keyboard so all keys go to our overlay
-        let grab = conn
-            .grab_keyboard(true, window, CURRENT_TIME, GrabMode::ASYNC, GrabMode::ASYNC)
-            .context("grab keyboard request")?
-            .reply()
-            .context("grab keyboard reply")?;
-
-        if grab.status != GrabStatus::SUCCESS {
-            anyhow::bail!("failed to grab keyboard: {:?}", grab.status);
-        }
+        // Grab keyboard so all keys go to our overlay.
+        // Retry briefly: on GNOME the compositor may still hold the grab when
+        // we first try (e.g. from the shortcut key-release event).
+        grab_keyboard_with_retry(&conn, window).context("grab keyboard")?;
 
         Ok(X11Backend {
             conn,
@@ -376,26 +372,35 @@ impl Backend for X11Backend {
             .context("raise window")?;
         self.conn.flush().context("flush after remap")?;
 
-        let grab = self
-            .conn
-            .grab_keyboard(
-                true,
-                self.window,
-                CURRENT_TIME,
-                GrabMode::ASYNC,
-                GrabMode::ASYNC,
-            )
-            .context("regrab keyboard")?
-            .reply()
-            .context("regrab keyboard reply")?;
-
-        if grab.status != GrabStatus::SUCCESS {
-            anyhow::bail!("failed to regrab keyboard: {:?}", grab.status);
-        }
+        grab_keyboard_with_retry(&self.conn, self.window).context("regrab keyboard")?;
 
         self.mapped = true;
         Ok(())
     }
+}
+
+/// Try to grab the keyboard, retrying for up to ~500 ms.
+/// On GNOME and some other compositors the shortcut key-release event may
+/// still be in flight when we first attempt the grab, causing ALREADY_GRABBED.
+fn grab_keyboard_with_retry(conn: &RustConnection, window: Window) -> Result<()> {
+    const ATTEMPTS: u32 = 10;
+    const DELAY_MS: u64 = 50;
+
+    for attempt in 0..ATTEMPTS {
+        if attempt > 0 {
+            std::thread::sleep(Duration::from_millis(DELAY_MS));
+        }
+        let status = conn
+            .grab_keyboard(true, window, CURRENT_TIME, GrabMode::ASYNC, GrabMode::ASYNC)
+            .context("grab keyboard request")?
+            .reply()
+            .context("grab keyboard reply")?
+            .status;
+        if status == GrabStatus::SUCCESS {
+            return Ok(());
+        }
+    }
+    anyhow::bail!("failed to grab keyboard after {ATTEMPTS} attempts")
 }
 
 /// Capture the root window contents as a BGRA pixel buffer.
