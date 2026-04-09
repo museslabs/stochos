@@ -86,7 +86,7 @@ pub enum Key {
 }
 
 /// (name, Key) pairs for all non-Char variants, used by serde.
-const SPECIAL_KEYS: &[(&str, Key); 53] = &[
+const SPECIAL_KEYS: &[(&str, Key)] = &[
     ("right_control", Key::RightControl),
     ("left_control", Key::LeftControl),
     ("right_alt", Key::RightAlt),
