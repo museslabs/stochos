@@ -7,10 +7,28 @@ mod recording;
 
 use crate::{
     backend::{Backend, KeyEvent},
+    config::config,
     input::{keys_to_pos, InputState},
     macro_store::{MacroAction, MacroStore},
     render::{render_grid, render_rec_indicator},
 };
+
+pub(super) fn move_to_column_center<B: Backend>(
+    backend: &mut B,
+    col: u32,
+    width: u32,
+    height: u32,
+) -> anyhow::Result<()> {
+    let cfg = config();
+    let ncols = cfg.dynamic_cols(width);
+    if col < ncols {
+        let cell_w = width / ncols;
+        let cx = col * cell_w + cell_w / 2;
+        let cy = height / 2;
+        backend.move_mouse(cx, cy)?;
+    }
+    Ok(())
+}
 
 pub enum ModeTransition {
     Stay,

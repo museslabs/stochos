@@ -3,7 +3,7 @@ use crate::{
     config::config,
     input::InputState,
     macro_store::MacroAction,
-    mode::{draw_grid, Mode, ModeTransition},
+    mode::{draw_grid, move_to_column_center, Mode, ModeTransition},
 };
 
 pub(super) fn handle_key<B: Backend>(
@@ -21,6 +21,7 @@ pub(super) fn handle_key<B: Backend>(
         KeyEvent::Undo => Ok(ModeTransition::Back),
         KeyEvent::MacroRecord => {
             if recorded_actions.is_empty() {
+                backend.move_mouse(width / 2, height / 2)?;
                 Ok(ModeTransition::Enter(Mode::Normal {
                     input_state: InputState::First,
                     target: None,
@@ -32,11 +33,14 @@ pub(super) fn handle_key<B: Backend>(
                 }))
             }
         }
-        KeyEvent::Close => Ok(ModeTransition::Enter(Mode::Normal {
-            input_state: InputState::First,
-            target: None,
-            drag_origin: None,
-        })),
+        KeyEvent::Close => {
+            backend.move_mouse(width / 2, height / 2)?;
+            Ok(ModeTransition::Enter(Mode::Normal {
+                input_state: InputState::First,
+                target: None,
+                drag_origin: None,
+            }))
+        }
         KeyEvent::Char(ch)
             if config().hints().contains(ch)
                 || (matches!(input_state, InputState::SubFirst { .. })
@@ -44,13 +48,18 @@ pub(super) fn handle_key<B: Backend>(
         {
             let cfg = config();
             match input_state {
-                InputState::First => Ok(ModeTransition::Enter(Mode::MacroRecording {
-                    input_state: InputState::Second(*ch),
-                    target,
-                    drag_origin,
-                    recorded_actions: recorded_actions.to_vec(),
-                    drag_start_keys: drag_start_keys.to_owned(),
-                })),
+                InputState::First => {
+                    let col = cfg.hints().iter().position(|c| c == ch).unwrap_or(0) as u32;
+                    move_to_column_center(backend, col, width, height)?;
+
+                    Ok(ModeTransition::Enter(Mode::MacroRecording {
+                        input_state: InputState::Second(*ch),
+                        target,
+                        drag_origin,
+                        recorded_actions: recorded_actions.to_vec(),
+                        drag_start_keys: drag_start_keys.to_owned(),
+                    }))
+                }
                 InputState::Second(first) => {
                     let col = cfg.hints().iter().position(|c| c == first).unwrap_or(0) as u32;
                     let row = cfg.hints().iter().position(|c| c == ch).unwrap_or(0) as u32;
@@ -174,6 +183,7 @@ pub(super) fn handle_key<B: Backend>(
             }))
         }
         KeyEvent::Char('/') if drag_origin.is_some() => {
+            backend.move_mouse(width / 2, height / 2)?;
             Ok(ModeTransition::Enter(Mode::MacroRecording {
                 input_state: InputState::First,
                 target: None,
@@ -188,6 +198,7 @@ pub(super) fn handle_key<B: Backend>(
                 InputState::Ready { .. } | InputState::SubFirst { .. }
             ) =>
         {
+            backend.move_mouse(width / 2, height / 2)?;
             Ok(ModeTransition::Enter(Mode::MacroRecording {
                 input_state: InputState::First,
                 target,

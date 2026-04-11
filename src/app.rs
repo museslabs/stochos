@@ -14,6 +14,8 @@ pub fn run<B: Backend>(backend: &mut B) -> anyhow::Result<()> {
         drag_origin: None,
     };
 
+    backend.move_mouse(w / 2, h / 2)?;
+
     mode.draw(backend, &mut pixels, w, h, &macro_store)?;
 
     while let Some(key) = backend.next_key()? {

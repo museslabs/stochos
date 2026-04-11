@@ -6,7 +6,7 @@ use crate::{
     config::config,
     input::InputState,
     macro_store::MacroAction,
-    mode::{draw_grid, ModeTransition},
+    mode::{draw_grid, move_to_column_center, ModeTransition},
 };
 
 pub(super) fn handle_key<B: Backend>(
@@ -53,6 +53,7 @@ pub(super) fn handle_key<B: Backend>(
                 InputState::Ready { .. } | InputState::SubFirst { .. }
             ) =>
         {
+            backend.move_mouse(width / 2, height / 2)?;
             Ok(ModeTransition::Enter(Mode::Normal {
                 input_state: InputState::First,
                 target: None,
@@ -82,11 +83,16 @@ pub(super) fn handle_key<B: Backend>(
         {
             let cfg = config();
             match input_state {
-                InputState::First => Ok(ModeTransition::Enter(Mode::Normal {
-                    input_state: InputState::Second(*ch),
-                    target,
-                    drag_origin,
-                })),
+                InputState::First => {
+                    let col = cfg.hints().iter().position(|c| c == ch).unwrap_or(0) as u32;
+                    move_to_column_center(backend, col, width, height)?;
+
+                    Ok(ModeTransition::Enter(Mode::Normal {
+                        input_state: InputState::Second(*ch),
+                        target,
+                        drag_origin,
+                    }))
+                }
                 InputState::Second(first) => {
                     let col = cfg.hints().iter().position(|c| c == first).unwrap_or(0) as u32;
                     let row = cfg.hints().iter().position(|c| c == ch).unwrap_or(0) as u32;
