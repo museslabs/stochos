@@ -30,6 +30,10 @@ pub enum Key {
     Escape,
     Backspace,
     Tab,
+    LeftAlt,
+    RightAlt,
+    LeftControl,
+    RightControl,
     // Navigation
     Insert,
     Delete,
@@ -83,6 +87,10 @@ pub enum Key {
 
 /// (name, Key) pairs for all non-Char variants, used by serde.
 const SPECIAL_KEYS: &[(&str, Key)] = &[
+    ("right_control", Key::RightControl),
+    ("left_control", Key::LeftControl),
+    ("right_alt", Key::RightAlt),
+    ("left_alt", Key::LeftAlt),
     ("space", Key::Space),
     ("enter", Key::Enter),
     ("escape", Key::Escape),

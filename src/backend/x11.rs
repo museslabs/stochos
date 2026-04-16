@@ -446,6 +446,13 @@ fn keycode_to_key(kc: u32, shift_held: bool) -> Option<Key> {
         15 => return Some(Key::Tab),
         28 => return Some(Key::Enter),
         57 => return Some(Key::Space),
+
+        56 => return Some(Key::LeftAlt),
+        100 => return Some(Key::RightAlt),
+
+        29 => return Some(Key::LeftControl),
+        97 => return Some(Key::RightControl),
+
         102 => return Some(Key::Home),
         103 => return Some(Key::Up),
         104 => return Some(Key::PageUp),
