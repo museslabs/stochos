@@ -3,15 +3,26 @@ use crate::input::InputState;
 use crate::macro_store::MacroStore;
 use crate::mode::{Mode, ModeTransition};
 
-pub fn run<B: Backend>(backend: &mut B) -> anyhow::Result<()> {
+#[derive(Clone, Copy)]
+pub enum InitialMode {
+    Normal,
+    Bisect,
+}
+
+pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<()> {
     let (w, h) = backend.screen_size();
     let mut pixels = vec![0u8; (w * h * 4) as usize];
     let mut macro_store = MacroStore::load();
     let mut transition_stack: Vec<Mode> = Vec::new();
-    let mut mode = Mode::Normal {
-        input_state: InputState::First,
-        target: None,
-        drag_origin: None,
+    let mut mode = match initial {
+        InitialMode::Normal => Mode::Normal {
+            input_state: InputState::First,
+            target: None,
+            drag_origin: None,
+        },
+        InitialMode::Bisect => Mode::Bisect {
+            region: (0, 0, w, h),
+        },
     };
 
     backend.move_mouse(w / 2, h / 2)?;

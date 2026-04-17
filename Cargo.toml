@@ -11,6 +11,7 @@ x11 = ["dep:x11rb"]
 
 [dependencies]
 anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
 wayland-client = { version = "0.31", optional = true }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = true }
 tempfile = { version = "3", optional = true }
