@@ -1,9 +1,11 @@
 use anyhow::Result;
 
 /// A decoded key event, platform-agnostic.
+#[derive(Clone, Copy)]
 pub enum KeyEvent {
     Normal,
     Bisect,
+    FreeMode,
     Char(char),
     Click,
     DoubleClick,

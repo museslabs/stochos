@@ -1,4 +1,5 @@
 use crate::backend::Backend;
+use crate::config::config;
 use crate::input::InputState;
 use crate::macro_store::MacroStore;
 use crate::mode::{Mode, ModeTransition};
@@ -7,6 +8,7 @@ use crate::mode::{Mode, ModeTransition};
 pub enum InitialMode {
     Normal,
     Bisect,
+    Free,
 }
 
 pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<()> {
@@ -23,6 +25,11 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
         InitialMode::Bisect => Mode::Bisect {
             region: (0, 0, w, h),
         },
+        InitialMode::Free => Mode::Free {
+            x: w / 2,
+            y: h / 2,
+            speed: config().free.base_speed.max(1),
+        },
     };
 
     backend.move_mouse(w / 2, h / 2)?;
@@ -38,6 +45,10 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
             ModeTransition::Enter(m) => {
                 let prev = std::mem::replace(&mut mode, m);
                 transition_stack.push(prev);
+                mode.draw(backend, &mut pixels, w, h, &macro_store)?;
+            }
+            ModeTransition::Replace(m) => {
+                mode = m;
                 mode.draw(backend, &mut pixels, w, h, &macro_store)?;
             }
             ModeTransition::Back => {

@@ -94,6 +94,7 @@ Released binaries are not codesigned with a Developer ID, so after every upgrade
 | Tab | Search macros / quick-save position |
 | `b` | Switch to bisect mode |
 | `n` | Switch back to normal mode (from bisect) |
+| `v` | Switch to free mode |
 
 All keys are configurable (see Configuration below).
 
@@ -102,6 +103,7 @@ All keys are configurable (see Configuration below).
 | Flag | Effect |
 |------|--------|
 | `--bisect` | Start the overlay directly in bisect mode |
+| `--free` | Start the overlay directly in free mode |
 | `--allow-multiple` | Skip the single-instance lock |
 | `--print-default-config` | Print the default config (TOML) to stdout and exit. Diff against your `config.toml` to discover options added by newer versions |
 
@@ -115,6 +117,19 @@ An alternative grid mode that recursively subdivides. Instead of two-key combos 
 - Backspace pops back up one level
 - Subdivision stops automatically once a cell would fall below `min_cell_size` pixels — the region is highlighted and you can act or back out
 - Press `n` to switch back to normal mode
+
+### Free mode
+
+An alternative mode for direct keyboard-driven cursor movement. Instead of selecting a grid cell, you steer the cursor continuously with movement keys, then act.
+
+- Enter free mode: press `v` from normal or bisect mode, or launch with `--free`
+- Move the cursor with `h` / `j` / `k` / `l` (left / down / up / right)
+- Press `=` to increase speed and `-` to decrease it; the current speed is shown in the top-left corner
+- Space / Enter / Delete act (click / double-click / right-click) and exit
+- Backspace returns to the previous mode; Escape closes the overlay
+- Key repeat is supported: hold a movement key to move continuously
+
+**Limitations:** drag and text selection are not available in free mode. Use normal mode for those actions.
 
 ### Macros
 
@@ -157,6 +172,7 @@ playback_speed = 1.0  # 1.0 = recorded speed, 2.0 = twice as fast, 0.0 or negati
 [keys]
 normal = "n"
 bisect = "b"
+free_mode = "v"
 click = "space"
 double_click = "enter"
 close = "escape"
@@ -187,6 +203,20 @@ selected_bg = "#2196f3ff"        # Material Design Blue (works in light/dark)
 rec_bg = "#f44336ff"             # Material Design Red (urgent, visible everywhere)
 border = "#00e676ff"             # Material Green (fresh, visible)
 border_dragging = "#e91e63ff"    # Material Pink (strong attention grabber)
+crosshair = "#ffaa00ff"          # Amber crosshair in free mode
+
+[free]
+left = "h"
+down = "j"
+up = "k"
+right = "l"
+fast = "="
+slow = "-"
+base_speed = 25
+fast_multiplier = 3.0
+slow_multiplier = 3.0
+min_speed = 1
+max_speed = 500
 ```
 
 ### Font
@@ -208,9 +238,18 @@ border_dragging = "#e91e63ff"    # Material Pink (strong attention grabber)
 - `rows` and `cols` set the grid shape used at every subdivision level (default 2x2).
 - `min_cell_size` is the pixel floor at which subdivision stops. The glyph scale auto-shrinks to fit the cell, so lowering this lets you reach tiny regions.
 
+### Free mode
+
+- `left`, `down`, `up`, `right` set the movement keys (default: `h`, `j`, `k`, `l`).
+- `fast` / `slow` increase or decrease the step size by `fast_multiplier` / `slow_multiplier` (default: `=` and `-`).
+- `base_speed` is the initial step size in pixels (default: `25`).
+- `fast_multiplier` / `slow_multiplier` are the scale factors applied when pressing the speed keys (default: `3.0`).
+- `min_speed` / `max_speed` clamp the step size in pixels (default: `1` and `500`).
+
 ### Macros
 
 - `playback_speed` scales the per-action delays recorded into each macro. `1.0` plays at the recorded rhythm, `2.0` plays twice as fast, `0.5` plays at half speed. Setting it to `0.0` (or any negative value) disables waits entirely for instant playback. Default is `1.0`.
+
 
 ### Keys
 

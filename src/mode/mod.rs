@@ -1,4 +1,5 @@
 mod bisect;
+mod free;
 mod macro_bind_key;
 mod macro_name;
 mod macro_replay;
@@ -37,6 +38,10 @@ pub enum ModeTransition {
     Stay,
     Redraw,
     Enter(Mode),
+    /// Swap the current mode for another without pushing onto the undo stack.
+    /// Used for rapid in-place state updates (e.g. free-mode movement) where
+    /// each step is not a distinct undoable action.
+    Replace(Mode),
     Back,
     Exit,
 }
@@ -70,6 +75,11 @@ pub enum Mode {
     MacroSearch {
         query: Vec<char>,
         selected: usize,
+    },
+    Free {
+        x: u32,
+        y: u32,
+        speed: u32,
     },
 }
 
@@ -149,6 +159,9 @@ impl Mode {
             Mode::MacroSearch { query, selected } => {
                 macro_search::handle_key(width, height, key, backend, query, *selected, macro_store)
             }
+            Mode::Free { x, y, speed } => {
+                free::handle_key(width, height, key, backend, *x, *y, *speed)
+            }
         }
     }
 
@@ -200,6 +213,9 @@ impl Mode {
                 *selected,
                 macro_store,
             ),
+            Mode::Free { x, y, speed } => {
+                free::draw(backend, pixels, width, height, *x, *y, *speed)
+            }
         }
     }
 }

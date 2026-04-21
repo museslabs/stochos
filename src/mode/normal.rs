@@ -77,6 +77,41 @@ pub(super) fn handle_key<B: Backend>(
                 last_action_at: None,
             }))
         }
+        KeyEvent::FreeMode => {
+            let cfg = config();
+            if collides_with_hint(
+                cfg.keys.free_mode,
+                input_state,
+                cfg.hints(),
+                cfg.sub_hints(),
+            ) {
+                if let Key::Char(ch) = cfg.keys.free_mode {
+                    return handle_key(
+                        width,
+                        height,
+                        &KeyEvent::Char(ch),
+                        backend,
+                        input_state,
+                        target,
+                        drag_origin,
+                    );
+                }
+            }
+
+            let (x, y) = if let Some((x, y)) = target {
+                (x, y)
+            } else {
+                let (x, y) = (width / 2, height / 2);
+                backend.move_mouse(x, y)?;
+                (x, y)
+            };
+
+            Ok(ModeTransition::Enter(Mode::Free {
+                x: x,
+                y: y,
+                speed: config().free.base_speed.max(1),
+            }))
+        }
         KeyEvent::Char(ch)
             if config().hints().contains(ch)
                 || (matches!(input_state, InputState::SubFirst { .. })
@@ -188,8 +223,7 @@ pub(super) fn handle_key<B: Backend>(
         }
         KeyEvent::Bisect => {
             let cfg = config();
-            if collides_with_hint(cfg.keys.bisect, input_state, cfg.hints(), cfg.sub_hints())
-            {
+            if collides_with_hint(cfg.keys.bisect, input_state, cfg.hints(), cfg.sub_hints()) {
                 if let Key::Char(ch) = cfg.keys.bisect {
                     return handle_key(
                         width,

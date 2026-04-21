@@ -210,6 +210,7 @@ impl Default for GridConfig {
 pub struct KeyBindings {
     pub normal: Key,
     pub bisect: Key,
+    pub free_mode: Key,
     pub click: Key,
     pub double_click: Key,
     pub close: Key,
@@ -228,6 +229,7 @@ impl Default for KeyBindings {
         Self {
             normal: Key::Char('n'),
             bisect: Key::Char('b'),
+            free_mode: Key::Char('v'),
             click: Key::Space,
             double_click: Key::Enter,
             close: Key::Escape,
@@ -252,6 +254,9 @@ impl KeyBindings {
         }
         if key == self.bisect {
             return Some(KeyEvent::Bisect);
+        }
+        if key == self.free_mode {
+            return Some(KeyEvent::FreeMode);
         }
         if key == self.click {
             return Some(KeyEvent::Click);
@@ -330,6 +335,9 @@ pub struct Colors {
     pub border: [u8; 4],
     #[serde(with = "from_hex")]
     pub border_dragging: [u8; 4],
+
+    #[serde(with = "from_hex")]
+    pub crosshair: [u8; 4],
 }
 mod from_hex {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -383,6 +391,7 @@ impl Default for Colors {
             rec_bg: [0x00, 0x00, 0xCC, 0xFF],
             border: [0x00, 0xA5, 0xFF, 0xFF],          //amber
             border_dragging: [0xFF, 0x00, 0xFF, 0xFF], //magenta
+            crosshair: [0x00, 0xA5, 0xFF, 0xFF],       //amber
         }
     }
 }
@@ -424,12 +433,47 @@ impl Default for MacrosConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
+pub struct FreeConfig {
+    pub left: Key,
+    pub down: Key,
+    pub up: Key,
+    pub right: Key,
+    pub fast: Key,
+    pub slow: Key,
+    pub base_speed: u32,
+    pub fast_multiplier: f32,
+    pub slow_multiplier: f32,
+    pub min_speed: u32,
+    pub max_speed: u32,
+}
+
+impl Default for FreeConfig {
+    fn default() -> Self {
+        Self {
+            left: Key::Char('h'),
+            down: Key::Char('j'),
+            up: Key::Char('k'),
+            right: Key::Char('l'),
+            fast: Key::Char('='),
+            slow: Key::Char('-'),
+            base_speed: 25,
+            fast_multiplier: 3.0,
+            slow_multiplier: 3.0,
+            min_speed: 1,
+            max_speed: 500,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub grid: GridConfig,
     pub bisect: BisectConfig,
     pub keys: KeyBindings,
     pub colors: Colors,
     pub macros: MacrosConfig,
+    pub free: FreeConfig,
     pub font_size: u32,
     pub sub_hint_font_size: Option<u32>,
     pub panel_font_size: Option<u32>,
@@ -443,6 +487,7 @@ impl Default for Config {
             keys: KeyBindings::default(),
             colors: Colors::default(),
             macros: MacrosConfig::default(),
+            free: FreeConfig::default(),
             font_size: 2,
             sub_hint_font_size: None,
             panel_font_size: None,
