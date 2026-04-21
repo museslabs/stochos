@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/museslabs/stochos/main/install.sh |
 With cargo:
 
 ```sh
-cargo install --git https://github.com/museslabs/stochos
+cargo install stochos
 ```
 
 From source:
