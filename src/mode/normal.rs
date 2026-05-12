@@ -3,7 +3,7 @@ use anyhow::Ok;
 
 use crate::{
     backend::{Backend, KeyEvent},
-    config::config,
+    config::{config, Key},
     input::InputState,
     macro_store::MacroAction,
     mode::{draw_grid, move_to_column_center, ModeTransition},
@@ -182,9 +182,26 @@ pub(super) fn handle_key<B: Backend>(
             backend.scroll_right()?;
             Ok(ModeTransition::Redraw)
         }
-        KeyEvent::Bisect => Ok(ModeTransition::Enter(Mode::Bisect {
-            region: (0, 0, width, height),
-        })),
+        KeyEvent::Bisect => {
+            let cfg = config();
+            if collides_with_hint(cfg.keys.bisect, input_state, cfg.hints(), cfg.sub_hints())
+            {
+                if let Key::Char(ch) = cfg.keys.bisect {
+                    return handle_key(
+                        width,
+                        height,
+                        &KeyEvent::Char(ch),
+                        backend,
+                        input_state,
+                        target,
+                        drag_origin,
+                    );
+                }
+            }
+            Ok(ModeTransition::Enter(Mode::Bisect {
+                region: (0, 0, width, height),
+            }))
+        }
         _ => Ok(ModeTransition::Stay),
     }
 }
@@ -198,4 +215,19 @@ pub(super) fn draw<B: Backend>(
     dragging: bool,
 ) -> anyhow::Result<()> {
     draw_grid(pixels, width, height, input_state, dragging, false, backend)
+}
+fn collides_with_hint(
+    key: Key,
+    input_state: &InputState,
+    hints: &[char],
+    sub_hints: &[char],
+) -> bool {
+    let Key::Char(ch) = key else {
+        return false;
+    };
+    match input_state {
+        InputState::Second(_) => hints.contains(&ch),
+        InputState::SubFirst { .. } => sub_hints.contains(&ch),
+        InputState::First | InputState::Ready { .. } => false,
+    }
 }
