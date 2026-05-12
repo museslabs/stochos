@@ -44,6 +44,12 @@ fn acquire_lock(allow_multiple: bool) -> anyhow::Result<Option<LockGuard>> {
 
 fn main() -> anyhow::Result<()> {
     let args = cli::Args::parse();
+
+    if args.print_default_config {
+        print!("{}", config::Config::default_toml()?);
+        return Ok(());
+    }
+
     let _lock = acquire_lock(args.allow_multiple)?; // keep lock alive
 
     config::init();
