@@ -86,6 +86,7 @@ All keys are configurable (see Configuration below).
 |------|--------|
 | `--bisect` | Start the overlay directly in bisect mode |
 | `--allow-multiple` | Skip the single-instance lock |
+| `--print-default-config` | Print the default config (TOML) to stdout and exit. Diff against your `config.toml` to discover options added by newer versions |
 
 ### Bisect mode
 
