@@ -432,7 +432,17 @@ impl Config {
         let path = config_path();
         match std::fs::read_to_string(&path) {
             Ok(data) => toml::from_str(&data).unwrap_or_default(),
-            Err(_) => Config::default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let config = Config::default();
+                if let Err(e) = write_default(&path, &config) {
+                    eprintln!("Failed to write default config to {}: {e}", path.display());
+                }
+                config
+            }
+            Err(e) => {
+                eprintln!("Failed to read config at {}: {e}", path.display());
+                Config::default()
+            }
         }
     }
 
@@ -500,6 +510,15 @@ impl Config {
         }
         self.rows()
     }
+}
+
+fn write_default(path: &PathBuf, config: &Config) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let data = toml::to_string_pretty(config)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    std::fs::write(path, data)
 }
 
 fn config_path() -> PathBuf {
