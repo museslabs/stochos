@@ -21,6 +21,12 @@ fn clamp_scale(scale: u32) -> u32 {
 
 /// Platform-agnostic key representation.
 /// Each backend maps its native keycodes to these values.
+// TODO: platform-aware config validation. On macOS the backend can't deliver
+// modifier-only keys (Left/RightControl, Left/RightAlt  would require a
+// kCGEventFlagsChanged path) or keys absent from Apple keyboards (Insert,
+// PrintScreen, Pause, ContextMenu, NumLock, ScrollLock), and NumPadEnter
+// collapses into Enter. Bindings to those values silently no-op today;
+// reject them at load with a clear error per platform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     Char(char),
