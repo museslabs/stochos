@@ -18,15 +18,23 @@ main() {
         exit 1
     fi
 
-    arch="$(uname -m)"
-    case "$arch" in
-        x86_64) arch_name="x86_64" ;;
-        *) echo "error: unsupported architecture: $arch" >&2; exit 1 ;;
-    esac
-
     os="$(uname -s)"
+    arch="$(uname -m)"
     case "$os" in
-        Linux) os_name="linux" ;;
+        Linux)
+            os_name="linux"
+            case "$arch" in
+                x86_64) arch_name="x86_64" ;;
+                *) echo "error: unsupported architecture for Linux: $arch" >&2; exit 1 ;;
+            esac
+            ;;
+        Darwin)
+            os_name="darwin"
+            case "$arch" in
+                arm64|aarch64) arch_name="aarch64" ;;
+                *) echo "error: unsupported architecture for macOS: $arch (Apple Silicon only)" >&2; exit 1 ;;
+            esac
+            ;;
         *) echo "error: unsupported OS: $os" >&2; exit 1 ;;
     esac
 
