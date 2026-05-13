@@ -69,6 +69,8 @@ On first launch, macOS will prompt for **Accessibility** permission. Open System
 
 If `CGEventTapCreate failed` is printed instead, also enable the binary under Input Monitoring.
 
+Released binaries are not codesigned with a Developer ID, so after every upgrade macOS treats the new binary as a different program and re-prompts for Accessibility (and Input Monitoring, if applicable). Re-enable it in System Settings each time. Install via the `curl | sh` command above — `curl` does not set the Gatekeeper quarantine attribute, so the binary runs without a "cannot be opened" prompt.
+
 ## Usage
 
 1. Trigger the overlay
