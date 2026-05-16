@@ -8,7 +8,7 @@ use crate::mode::{Mode, ModeTransition};
 pub enum InitialMode {
     Normal,
     Bisect,
-    Free,
+    Free { at_cursor: bool },
 }
 
 pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<()> {
@@ -16,6 +16,8 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
     let mut pixels = vec![0u8; (w * h * 4) as usize];
     let mut macro_store = MacroStore::load();
     let mut transition_stack: Vec<Mode> = Vec::new();
+
+    let mut warp_to_center = true;
     let mut mode = match initial {
         InitialMode::Normal => Mode::Normal {
             input_state: InputState::First,
@@ -25,14 +27,35 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
         InitialMode::Bisect => Mode::Bisect {
             region: (0, 0, w, h),
         },
-        InitialMode::Free => Mode::Free {
-            x: w / 2,
-            y: h / 2,
-            speed: config().free.base_speed.max(1),
-        },
+        InitialMode::Free { at_cursor } => {
+            let (x, y) = if at_cursor {
+                match backend.cursor_position()? {
+                    Some(pos) => {
+                        warp_to_center = false;
+                        pos
+                    }
+                    None => {
+                        eprintln!(
+                            "stochos: cursor position unavailable on this backend; \
+                             falling back to screen center for free mode."
+                        );
+                        (w / 2, h / 2)
+                    }
+                }
+            } else {
+                (w / 2, h / 2)
+            };
+            Mode::Free {
+                x,
+                y,
+                speed: config().free.base_speed.max(1),
+            }
+        }
     };
 
-    backend.move_mouse(w / 2, h / 2)?;
+    if warp_to_center {
+        backend.move_mouse(w / 2, h / 2)?;
+    }
 
     mode.draw(backend, &mut pixels, w, h, &macro_store)?;
 
