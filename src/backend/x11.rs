@@ -217,6 +217,18 @@ impl Backend for X11Backend {
         self.warp_and_sync(x, y)
     }
 
+    fn cursor_position(&mut self) -> Result<Option<(u32, u32)>> {
+        let reply = self
+            .conn
+            .query_pointer(self.root)
+            .context("query_pointer")?
+            .reply()
+            .context("query_pointer reply")?;
+        let x = (reply.root_x as i32).clamp(0, self.screen_w as i32 - 1) as u32;
+        let y = (reply.root_y as i32).clamp(0, self.screen_h as i32 - 1) as u32;
+        Ok(Some((x, y)))
+    }
+
     fn click(&mut self, x: u32, y: u32) -> Result<()> {
         self.teardown()?;
         self.warp_and_sync(x, y)?;
