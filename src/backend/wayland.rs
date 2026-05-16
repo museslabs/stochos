@@ -63,6 +63,7 @@ impl WaylandBackend {
             seat: None,
             vp_manager: None,
             vp: None,
+            wl_pointer: None,
             screen_w: 0,
             screen_h: 0,
             configured: false,
@@ -70,6 +71,7 @@ impl WaylandBackend {
             shift_held: false,
             current_output: None,
             held: None,
+            pointer_pos: None,
         };
 
         eq.roundtrip(&mut state).context("initial roundtrip")?;
@@ -83,7 +85,9 @@ impl WaylandBackend {
                 .context("waiting for configure")?;
         }
 
-        Ok(WaylandBackend { state, eq, qh })
+        let mut backend = WaylandBackend { state, eq, qh };
+        backend.present_empty()?;
+        Ok(backend)
     }
 
     fn ensure_vp(&mut self) {
@@ -128,6 +132,16 @@ impl WaylandBackend {
             .context("roundtrip after surface destroy")?;
         Ok(())
     }
+
+    fn present_empty(&mut self) -> Result<()> {
+        let (width, height) = (self.state.screen_w, self.state.screen_h);
+        let pixels = vec![0u8; (width * height * 4) as usize];
+        self.present(&pixels, width, height)?;
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after initial present")?;
+        Ok(())
+    }
 }
 
 impl Backend for WaylandBackend {
@@ -136,32 +150,19 @@ impl Backend for WaylandBackend {
     }
 
     fn present(&mut self, pixels: &[u8], width: u32, height: u32) -> Result<()> {
-        let stride = width * 4;
-        let mut file = tempfile::tempfile().context("create shm tempfile")?;
-        file.write_all(pixels).context("write pixel buffer")?;
-
-        let shm = self.state.shm.as_ref().context("wl_shm not available")?;
-        let pool = shm.create_pool(file.as_fd(), pixels.len() as i32, &self.qh, ());
-        let buf = pool.create_buffer(
-            0,
-            width as i32,
-            height as i32,
-            stride as i32,
-            wl_shm::Format::Argb8888,
-            &self.qh,
-            (),
-        );
-
-        let surface = self
-            .state
-            .surface
-            .as_ref()
-            .context("wl_surface not available")?;
-        surface.attach(Some(&buf), 0, 0);
-        surface.damage_buffer(0, 0, width as i32, height as i32);
-        surface.commit();
-        pool.destroy();
+        self.state.present(pixels, width, height, &self.qh)?;
         Ok(())
+    }
+
+    fn mouse_pos(&mut self) -> Result<(u32, u32)> {
+        // Roundtrip flushes our pending surface commit to the compositor and
+        // waits for the server to process it, which triggers wl_pointer::enter
+        // carrying the actual cursor position.
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip in mouse_pos")?;
+        let (w, h) = (self.state.screen_w, self.state.screen_h);
+        Ok(self.state.pointer_pos.unwrap_or((w / 2, h / 2)))
     }
 
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()> {
@@ -395,6 +396,7 @@ struct WaylandState {
     seat: Option<wl_seat::WlSeat>,
     vp_manager: Option<zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1>,
     vp: Option<zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1>,
+    wl_pointer: Option<wl_pointer::WlPointer>,
 
     screen_w: u32,
     screen_h: u32,
@@ -403,6 +405,7 @@ struct WaylandState {
     shift_held: bool,
     current_output: Option<wl_output::WlOutput>,
     held: Option<HeldKey>,
+    pointer_pos: Option<(u32, u32)>,
 }
 
 impl WaylandState {
@@ -430,6 +433,37 @@ impl WaylandState {
 }
 
 impl WaylandState {
+    fn present(
+        &mut self,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+        qh: &QueueHandle<Self>,
+    ) -> Result<()> {
+        let stride = width * 4;
+        let mut file = tempfile::tempfile().context("create shm tempfile")?;
+        file.write_all(pixels).context("write pixel buffer")?;
+
+        let shm = self.shm.as_ref().context("wl_shm not available")?;
+        let pool = shm.create_pool(file.as_fd(), pixels.len() as i32, qh, ());
+        let buf = pool.create_buffer(
+            0,
+            width as i32,
+            height as i32,
+            stride as i32,
+            wl_shm::Format::Argb8888,
+            qh,
+            (),
+        );
+
+        let surface = self.surface.as_ref().context("wl_surface not available")?;
+        surface.attach(Some(&buf), 0, 0);
+        surface.damage_buffer(0, 0, width as i32, height as i32);
+        surface.commit();
+        pool.destroy();
+        Ok(())
+    }
+
     fn init_layer_surface(&mut self, qh: &QueueHandle<Self>) {
         let compositor = self.compositor.as_ref().expect("wl_compositor missing");
         let layer_shell = self
@@ -509,7 +543,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
 
 impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
     fn event(
-        _state: &mut Self,
+        state: &mut Self,
         seat: &wl_seat::WlSeat,
         event: wl_seat::Event,
         _: &(),
@@ -522,6 +556,9 @@ impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
         {
             if caps.contains(wl_seat::Capability::Keyboard) {
                 seat.get_keyboard(qh, ());
+            }
+            if caps.contains(wl_seat::Capability::Pointer) && state.wl_pointer.is_none() {
+                state.wl_pointer = Some(seat.get_pointer(qh, ()));
             }
         }
     }
@@ -629,7 +666,32 @@ delegate_noop!(WaylandState: ignore wl_output::WlOutput);
 delegate_noop!(WaylandState: ignore wl_shm::WlShm);
 delegate_noop!(WaylandState: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(WaylandState: ignore wl_buffer::WlBuffer);
-delegate_noop!(WaylandState: ignore wl_pointer::WlPointer);
+impl Dispatch<wl_pointer::WlPointer, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_pointer::Event::Enter {
+                surface_x,
+                surface_y,
+                ..
+            }
+            | wl_pointer::Event::Motion {
+                surface_x,
+                surface_y,
+                ..
+            } => {
+                state.pointer_pos = Some((surface_x.round() as u32, surface_y.round() as u32));
+            }
+            _ => {}
+        }
+    }
+}
 delegate_noop!(WaylandState: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
 delegate_noop!(WaylandState: ignore zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1);
 delegate_noop!(WaylandState: ignore zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1);

@@ -25,14 +25,19 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
         InitialMode::Bisect => Mode::Bisect {
             region: (0, 0, w, h),
         },
-        InitialMode::Free => Mode::Free {
-            x: w / 2,
-            y: h / 2,
-            speed: config().free.base_speed.max(1),
-        },
+        InitialMode::Free => {
+            let (x, y) = backend.mouse_pos()?;
+            Mode::Free {
+                x,
+                y,
+                speed: config().free.base_speed.max(1),
+            }
+        }
     };
 
-    backend.move_mouse(w / 2, h / 2)?;
+    if !matches!(initial, InitialMode::Free) {
+        backend.move_mouse(w / 2, h / 2)?;
+    }
 
     mode.draw(backend, &mut pixels, w, h, &macro_store)?;
 
@@ -70,7 +75,11 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
                         ) if cur.len() == prev_acts.len()
                             && cur_drag.is_some() == prev_drag.is_some()
                     );
-                    mode = if keep { prev } else { prev.reset_timing_baseline() };
+                    mode = if keep {
+                        prev
+                    } else {
+                        prev.reset_timing_baseline()
+                    };
                     mode.draw(backend, &mut pixels, w, h, &macro_store)?;
                 }
             }

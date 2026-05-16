@@ -136,6 +136,9 @@ unsafe extern "C" {
     fn CGEventPost(tap_location: u32, event: CGEventRef);
     fn CGEventSourceSetLocalEventsSuppressionInterval(source: CGEventSourceRef, seconds: f64);
 
+    fn CGEventCreate(source: CGEventSourceRef) -> CGEventRef;
+    fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
+
     fn CGEventTapCreate(
         tap: u32,
         place: u32,
@@ -601,6 +604,16 @@ impl Backend for MacosBackend {
         self.window.displayIfNeeded();
         self.pump_events_briefly();
         Ok(())
+    }
+
+    fn mouse_pos(&mut self) -> Result<(u32, u32)> {
+        let pt = unsafe {
+            let evt = CGEventCreate(std::ptr::null_mut());
+            let loc = CGEventGetLocation(evt);
+            CFRelease(evt);
+            loc
+        };
+        Ok((pt.x as u32, pt.y as u32))
     }
 
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()> {
