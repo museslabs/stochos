@@ -101,6 +101,9 @@ impl WaylandBackend {
     }
 
     fn scroll(&mut self, axis: Axis, value: f64, discrete: i32) -> Result<()> {
+        // Save held-key state before teardown: the Leave event that fires during
+        // teardown_surface clears `held`, which would stop key-repeat for scroll.
+        let saved_held = self.state.held;
         self.teardown_surface()?;
 
         if let Some(vp) = &self.state.vp {
@@ -113,7 +116,17 @@ impl WaylandBackend {
         }
         self.state.conn.flush().context("flush after axis")?;
 
-        self.reopen()
+        self.reopen()?;
+
+        if let Some(held) = saved_held {
+            let interval = Duration::from_millis(1000 / REPEAT_RATE_HZ.max(1));
+            self.state.held = Some(HeldKey {
+                next_repeat_at: Instant::now() + interval,
+                ..held
+            });
+        }
+
+        Ok(())
     }
 
     fn teardown_surface(&mut self) -> Result<()> {
