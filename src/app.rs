@@ -9,6 +9,7 @@ pub enum InitialMode {
     Normal,
     Bisect,
     Free,
+    FreeCenter,
 }
 
 pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<()> {
@@ -33,9 +34,14 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
                 speed: config().free.base_speed.max(1),
             }
         }
+        InitialMode::FreeCenter => Mode::Free {
+            x: w / 2,
+            y: h / 2,
+            speed: config().free.base_speed.max(1),
+        },
     };
 
-    if !matches!(initial, InitialMode::Free) {
+    if !matches!(initial, InitialMode::Free | InitialMode::FreeCenter) {
         backend.move_mouse(w / 2, h / 2)?;
     }
 

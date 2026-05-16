@@ -13,6 +13,10 @@ pub struct Args {
     #[arg(long, group = "mode")]
     pub free: bool,
 
+    /// Start in free mode at the center of the screen
+    #[arg(long, group = "mode")]
+    pub free_center: bool,
+
     /// Allow multiple concurrent instances
     #[arg(long)]
     pub allow_multiple: bool,
@@ -31,6 +35,10 @@ impl Args {
 
         if self.free {
             return InitialMode::Free;
+        }
+
+        if self.free_center {
+            return InitialMode::FreeCenter;
         }
 
         InitialMode::Normal
