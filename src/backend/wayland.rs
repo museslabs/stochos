@@ -173,6 +173,12 @@ impl Backend for WaylandBackend {
         Ok(())
     }
 
+    fn cursor_position(&mut self) -> Result<Option<(u32, u32)>> {
+        // Wayland has no standard protocol for clients to query global cursor
+        // position. `zwlr_virtual_pointer_v1` is write-only.
+        Ok(None)
+    }
+
     /// Destroy the overlay so the compositor removes it from the surface stack,
     /// then re-send motion to trigger a focus update, then click.
     fn click(&mut self, x: u32, y: u32) -> Result<()> {
