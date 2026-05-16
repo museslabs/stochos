@@ -31,6 +31,9 @@ pub trait Backend {
     /// Display a rendered ARGB8888 pixel buffer on the overlay.
     fn present(&mut self, pixels: &[u8], width: u32, height: u32) -> Result<()>;
 
+    /// Query the current mouse pointer position.
+    fn mouse_pos(&mut self) -> Result<(u32, u32)>;
+
     /// Move the mouse pointer to an absolute position.
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()>;
 

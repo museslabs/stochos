@@ -103,7 +103,8 @@ All keys are configurable (see Configuration below).
 | Flag | Effect |
 |------|--------|
 | `--bisect` | Start the overlay directly in bisect mode |
-| `--free` | Start the overlay directly in free mode |
+| `--free` | Start the overlay directly in free mode (cursor starts at current mouse position) |
+| `--free-center` | Start the overlay directly in free mode with the cursor at the center of the screen |
 | `--allow-multiple` | Skip the single-instance lock |
 | `--print-default-config` | Print the default config (TOML) to stdout and exit. Diff against your `config.toml` to discover options added by newer versions |
 
@@ -122,7 +123,7 @@ An alternative grid mode that recursively subdivides. Instead of two-key combos 
 
 An alternative mode for direct keyboard-driven cursor movement. Instead of selecting a grid cell, you steer the cursor continuously with movement keys, then act.
 
-- Enter free mode: press `v` from normal or bisect mode, or launch with `--free`
+- Enter free mode: press `v` from normal or bisect mode, or launch with `--free` (starts at mouse position) or `--free-center` (starts at screen center)
 - Move the cursor with `h` / `j` / `k` / `l` (left / down / up / right)
 - Press `=` to increase speed and `-` to decrease it; the current speed is shown in the top-left corner
 - Space / Enter / Delete act (click / double-click / right-click) and exit

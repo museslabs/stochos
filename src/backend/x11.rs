@@ -213,6 +213,16 @@ impl Backend for X11Backend {
         Ok(())
     }
 
+    fn mouse_pos(&mut self) -> Result<(u32, u32)> {
+        let reply = self
+            .conn
+            .query_pointer(self.root)
+            .context("query_pointer")?
+            .reply()
+            .context("query_pointer reply")?;
+        Ok((reply.root_x as u32, reply.root_y as u32))
+    }
+
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()> {
         self.warp_and_sync(x, y)
     }
