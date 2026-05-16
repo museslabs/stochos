@@ -124,7 +124,9 @@ Record multi-step mouse sequences for replay.
 
 **Replay:** Press `@` then the bind key. Or press Tab to search by name, then Enter to select.
 
-Macros are resolution-independent and stored at `~/.config/stochos/macros.json`.
+**Timing.** Stochos captures the delay between each recorded action and replays at the same rhythm, so animations and page loads have time to settle. The first action has no wait (you weren't waiting for anything to start the macro). On replay, delays are scaled by `macros.playback_speed` in `config.toml` (default `1.0`, `2.0` plays twice as fast, `0.0` or negative plays instantly with no waits). You can also hand-edit the per-action `wait_ms` values in `macros.json` for fine-grained tuning.
+
+Macros are resolution-independent and stored at `~/.config/stochos/macros.json`. Macros recorded before this version still load and replay (without inter-action delays).
 
 ## Configuration
 
@@ -148,6 +150,9 @@ hints = ["a", "s", "d", "f"]  # One per cell, row-major (length must be >= rows 
 rows = 2
 cols = 2
 min_cell_size = 16  # Stop subdividing once a cell would be smaller than this, in pixels
+
+[macros]
+playback_speed = 1.0  # 1.0 = recorded speed, 2.0 = twice as fast, 0.0 or negative = instant (no waits)
 
 [keys]
 normal = "n"
@@ -202,6 +207,10 @@ border_dragging = "#e91e63ff"    # Material Pink (strong attention grabber)
 - `hints` sets the characters for each bisect cell, in row-major order. Must contain at least `rows * cols` entries; extras are ignored.
 - `rows` and `cols` set the grid shape used at every subdivision level (default 2x2).
 - `min_cell_size` is the pixel floor at which subdivision stops. The glyph scale auto-shrinks to fit the cell, so lowering this lets you reach tiny regions.
+
+### Macros
+
+- `playback_speed` scales the per-action delays recorded into each macro. `1.0` plays at the recorded rhythm, `2.0` plays twice as fast, `0.5` plays at half speed. Setting it to `0.0` (or any negative value) disables waits entirely for instant playback. Default is `1.0`.
 
 ### Keys
 
