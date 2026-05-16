@@ -1,6 +1,7 @@
 use clap::Parser;
 
 use crate::app::InitialMode;
+use crate::config::config;
 
 #[derive(Parser)]
 #[command(version, about = "Keyboard-driven mouse overlay")]
@@ -12,6 +13,11 @@ pub struct Args {
     /// Start in free mode (move the cursor manually)
     #[arg(long, group = "mode")]
     pub free: bool,
+
+    /// Start in free mode at the current cursor position.
+    /// Implies --free; overrides the `free.start_at_cursor` config setting.
+    #[arg(long, conflicts_with = "bisect")]
+    pub free_at_cursor: bool,
 
     /// Allow multiple concurrent instances
     #[arg(long)]
@@ -29,8 +35,9 @@ impl Args {
             return InitialMode::Bisect;
         }
 
-        if self.free {
-            return InitialMode::Free;
+        if self.free || self.free_at_cursor {
+            let at_cursor = self.free_at_cursor || config().free.start_at_cursor;
+            return InitialMode::Free { at_cursor };
         }
 
         InitialMode::Normal
