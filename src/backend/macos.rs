@@ -110,6 +110,8 @@ unsafe extern "C" {
     fn CGAssociateMouseAndMouseCursorPosition(connected: bool) -> i32;
 
     fn CGEventSourceCreate(state_id: i32) -> CGEventSourceRef;
+    fn CGEventCreate(source: CGEventSourceRef) -> CGEventRef;
+    fn CGEventGetLocation(event: CGEventRef) -> CGPoint;
     fn CGEventCreateMouseEvent(
         source: CGEventSourceRef,
         mouse_type: u32,
@@ -606,6 +608,20 @@ impl Backend for MacosBackend {
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()> {
         self.move_cursor(x, y);
         Ok(())
+    }
+
+    fn cursor_position(&mut self) -> Result<Option<(u32, u32)>> {
+        unsafe {
+            let evt = CGEventCreate(ptr::null_mut());
+            if evt.is_null() {
+                return Ok(None);
+            }
+            let pt = CGEventGetLocation(evt);
+            CFRelease(evt);
+            let x = pt.x.clamp(0.0, (self.screen_w.saturating_sub(1)) as f64) as u32;
+            let y = pt.y.clamp(0.0, (self.screen_h.saturating_sub(1)) as f64) as u32;
+            Ok(Some((x, y)))
+        }
     }
 
     fn click(&mut self, x: u32, y: u32) -> Result<()> {
