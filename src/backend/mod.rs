@@ -34,6 +34,10 @@ pub trait Backend {
     /// Move the mouse pointer to an absolute position.
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()>;
 
+    /// Current pointer position in screen coordinates. Returns `None` on
+    /// backends that can't query it (e.g. Wayland has no standard protocol).
+    fn cursor_position(&mut self) -> Result<Option<(u32, u32)>>;
+
     /// Tear down the overlay, click at (x, y), then return.
     fn click(&mut self, x: u32, y: u32) -> Result<()>;
 
