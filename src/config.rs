@@ -445,6 +445,7 @@ pub struct FreeConfig {
     pub slow_multiplier: f32,
     pub min_speed: u32,
     pub max_speed: u32,
+    pub start_at_cursor: bool,
 }
 
 impl Default for FreeConfig {
@@ -461,6 +462,7 @@ impl Default for FreeConfig {
             slow_multiplier: 3.0,
             min_speed: 1,
             max_speed: 500,
+            start_at_cursor: false,
         }
     }
 }
