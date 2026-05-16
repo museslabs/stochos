@@ -6,11 +6,13 @@ mod macro_search;
 mod normal;
 mod recording;
 
+use std::time::{Duration, Instant};
+
 use crate::{
     backend::{Backend, KeyEvent},
     config::config,
     input::{keys_to_pos, InputState},
-    macro_store::{MacroAction, MacroStore},
+    macro_store::{MacroAction, MacroActionKind, MacroStore},
     render::{render_grid, render_rec_indicator},
 };
 
@@ -54,6 +56,7 @@ pub enum Mode {
         drag_origin: Option<(u32, u32)>,
         recorded_actions: Vec<MacroAction>,
         drag_start_keys: String,
+        last_action_at: Option<Instant>,
     },
     MacroBindKey {
         actions: Vec<MacroAction>,
@@ -71,6 +74,27 @@ pub enum Mode {
 }
 
 impl Mode {
+    pub fn reset_timing_baseline(self) -> Self {
+        match self {
+            Mode::MacroRecording {
+                input_state,
+                target,
+                drag_origin,
+                recorded_actions,
+                drag_start_keys,
+                last_action_at,
+            } => Mode::MacroRecording {
+                input_state,
+                target,
+                drag_origin,
+                recorded_actions,
+                drag_start_keys,
+                last_action_at: last_action_at.map(|_| Instant::now()),
+            },
+            other => other,
+        }
+    }
+
     pub fn handle_key<B: Backend>(
         &self,
         width: u32,
@@ -100,6 +124,7 @@ impl Mode {
                 drag_origin,
                 recorded_actions,
                 drag_start_keys,
+                last_action_at,
             } => recording::handle_key(
                 width,
                 height,
@@ -110,6 +135,7 @@ impl Mode {
                 *drag_origin,
                 recorded_actions,
                 drag_start_keys,
+                *last_action_at,
             ),
             Mode::MacroBindKey { actions } => macro_bind_key::handle_key(key, actions),
             Mode::MacroName {
@@ -200,29 +226,36 @@ pub(super) fn replay_macro(
     h: u32,
     backend: &mut dyn Backend,
 ) -> anyhow::Result<()> {
+    let speed = config().macro_playback_speed();
     for action in actions {
-        match action {
-            MacroAction::Move(keys) => {
+        if speed > 0.0 && action.wait_ms > 0 {
+            let scaled = (action.wait_ms as f32 / speed).round() as u64;
+            if scaled > 0 {
+                std::thread::sleep(Duration::from_millis(scaled));
+            }
+        }
+        match &action.kind {
+            MacroActionKind::Move(keys) => {
                 if let Some((x, y)) = keys_to_pos(keys, w, h) {
                     backend.move_mouse(x, y)?;
                 }
             }
-            MacroAction::Click(keys) => {
+            MacroActionKind::Click(keys) => {
                 if let Some((x, y)) = keys_to_pos(keys, w, h) {
                     backend.click(x, y)?;
                 }
             }
-            MacroAction::DoubleClick(keys) => {
+            MacroActionKind::DoubleClick(keys) => {
                 if let Some((x, y)) = keys_to_pos(keys, w, h) {
                     backend.double_click(x, y)?;
                 }
             }
-            MacroAction::RightClick(keys) => {
+            MacroActionKind::RightClick(keys) => {
                 if let Some((x, y)) = keys_to_pos(keys, w, h) {
                     backend.right_click(x, y)?;
                 }
             }
-            MacroAction::Drag(start_keys, end_keys) => {
+            MacroActionKind::Drag(start_keys, end_keys) => {
                 if let (Some((x1, y1)), Some((x2, y2))) =
                     (keys_to_pos(start_keys, w, h), keys_to_pos(end_keys, w, h))
                 {

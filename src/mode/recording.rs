@@ -1,10 +1,17 @@
+use std::time::Instant;
+
 use crate::{
     backend::{Backend, KeyEvent},
     config::config,
     input::InputState,
-    macro_store::MacroAction,
+    macro_store::{MacroAction, MacroActionKind},
     mode::{draw_grid, move_to_column_center, Mode, ModeTransition},
 };
+
+fn elapsed_ms(last: Option<Instant>, now: Instant) -> u64 {
+    last.map(|t| now.duration_since(t).as_millis() as u64)
+        .unwrap_or(0)
+}
 
 pub(super) fn handle_key<B: Backend>(
     width: u32,
@@ -16,6 +23,7 @@ pub(super) fn handle_key<B: Backend>(
     drag_origin: Option<(u32, u32)>,
     recorded_actions: &[MacroAction],
     drag_start_keys: &str,
+    last_action_at: Option<Instant>,
 ) -> anyhow::Result<ModeTransition> {
     match key {
         KeyEvent::Undo => Ok(ModeTransition::Back),
@@ -58,6 +66,7 @@ pub(super) fn handle_key<B: Backend>(
                         drag_origin,
                         recorded_actions: recorded_actions.to_vec(),
                         drag_start_keys: drag_start_keys.to_owned(),
+                        last_action_at,
                     }))
                 }
                 InputState::Second(first) => {
@@ -84,6 +93,7 @@ pub(super) fn handle_key<B: Backend>(
                         drag_origin,
                         recorded_actions: recorded_actions.to_vec(),
                         drag_start_keys: drag_start_keys.to_owned(),
+                        last_action_at,
                     }))
                 }
                 InputState::SubFirst { col, row } => {
@@ -112,6 +122,7 @@ pub(super) fn handle_key<B: Backend>(
                             drag_origin,
                             recorded_actions: recorded_actions.to_vec(),
                             drag_start_keys: drag_start_keys.to_owned(),
+                            last_action_at,
                         }));
                     }
                     Ok(ModeTransition::Stay)
@@ -124,19 +135,27 @@ pub(super) fn handle_key<B: Backend>(
         {
             let (x, y) = target.unwrap();
             let current_keys = input_state.keys();
+            let now = Instant::now();
+            let wait_ms = elapsed_ms(last_action_at, now);
             let mut new_actions = recorded_actions.to_vec();
             match key {
                 KeyEvent::Click => {
                     backend.click(x, y)?;
-                    new_actions.push(MacroAction::Click(current_keys));
+                    new_actions.push(MacroAction::new(MacroActionKind::Click(current_keys), wait_ms));
                 }
                 KeyEvent::DoubleClick => {
                     backend.double_click(x, y)?;
-                    new_actions.push(MacroAction::DoubleClick(current_keys));
+                    new_actions.push(MacroAction::new(
+                        MacroActionKind::DoubleClick(current_keys),
+                        wait_ms,
+                    ));
                 }
                 KeyEvent::RightClick => {
                     backend.right_click(x, y)?;
-                    new_actions.push(MacroAction::RightClick(current_keys));
+                    new_actions.push(MacroAction::new(
+                        MacroActionKind::RightClick(current_keys),
+                        wait_ms,
+                    ));
                 }
                 _ => {}
             }
@@ -147,14 +166,20 @@ pub(super) fn handle_key<B: Backend>(
                 drag_origin: None,
                 recorded_actions: new_actions,
                 drag_start_keys: String::new(),
+                last_action_at: Some(now),
             }))
         }
         KeyEvent::Click | KeyEvent::DoubleClick if target.is_some() => {
             let (x, y) = target.unwrap();
             let current_keys = input_state.keys();
+            let now = Instant::now();
+            let wait_ms = elapsed_ms(last_action_at, now);
             let mut new_actions = recorded_actions.to_vec();
             backend.drag_select(drag_origin.unwrap().0, drag_origin.unwrap().1, x, y)?;
-            new_actions.push(MacroAction::Drag(drag_start_keys.to_owned(), current_keys));
+            new_actions.push(MacroAction::new(
+                MacroActionKind::Drag(drag_start_keys.to_owned(), current_keys),
+                wait_ms,
+            ));
             backend.reopen()?;
             Ok(ModeTransition::Enter(Mode::MacroRecording {
                 input_state: InputState::First,
@@ -162,6 +187,7 @@ pub(super) fn handle_key<B: Backend>(
                 drag_origin: None,
                 recorded_actions: new_actions,
                 drag_start_keys: String::new(),
+                last_action_at: Some(now),
             }))
         }
         KeyEvent::MacroMenu
@@ -172,14 +198,20 @@ pub(super) fn handle_key<B: Backend>(
                     InputState::SubFirst { .. } | InputState::Ready { .. }
                 ) =>
         {
+            let now = Instant::now();
+            let wait_ms = elapsed_ms(last_action_at, now);
             let mut new_actions = recorded_actions.to_vec();
-            new_actions.push(MacroAction::Move(input_state.keys()));
+            new_actions.push(MacroAction::new(
+                MacroActionKind::Move(input_state.keys()),
+                wait_ms,
+            ));
             Ok(ModeTransition::Enter(Mode::MacroRecording {
                 input_state: InputState::First,
                 target: None,
                 drag_origin: None,
                 recorded_actions: new_actions,
                 drag_start_keys: String::new(),
+                last_action_at: Some(now),
             }))
         }
         KeyEvent::Char('/') if drag_origin.is_some() => {
@@ -190,6 +222,7 @@ pub(super) fn handle_key<B: Backend>(
                 drag_origin: None,
                 recorded_actions: recorded_actions.to_vec(),
                 drag_start_keys: String::new(),
+                last_action_at: last_action_at.map(|_| Instant::now()),
             }))
         }
         KeyEvent::Char('/')
@@ -205,6 +238,7 @@ pub(super) fn handle_key<B: Backend>(
                 drag_origin: target,
                 recorded_actions: recorded_actions.to_vec(),
                 drag_start_keys: input_state.keys(),
+                last_action_at,
             }))
         }
         _ => Ok(ModeTransition::Stay),

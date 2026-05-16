@@ -1,14 +1,52 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum MacroAction {
+pub enum MacroActionKind {
     Move(String),
     Click(String),
     DoubleClick(String),
     RightClick(String),
     Drag(String, String),
+}
+
+#[derive(Serialize, Clone)]
+pub struct MacroAction {
+    pub kind: MacroActionKind,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub wait_ms: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+impl MacroAction {
+    pub fn new(kind: MacroActionKind, wait_ms: u64) -> Self {
+        Self { kind, wait_ms }
+    }
+}
+
+impl<'de> Deserialize<'de> for MacroAction {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        // Accept both the new `{ "kind": ..., "wait_ms": N }` shape and the
+        // legacy bare-enum shape (e.g. `{ "Click": "as" }`) from older macros.json files.
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            New {
+                kind: MacroActionKind,
+                #[serde(default)]
+                wait_ms: u64,
+            },
+            Legacy(MacroActionKind),
+        }
+        Ok(match Repr::deserialize(deserializer)? {
+            Repr::New { kind, wait_ms } => MacroAction { kind, wait_ms },
+            Repr::Legacy(kind) => MacroAction { kind, wait_ms: 0 },
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]

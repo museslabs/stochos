@@ -5,7 +5,7 @@ use crate::{
     backend::{Backend, KeyEvent},
     config::{config, Key},
     input::InputState,
-    macro_store::MacroAction,
+    macro_store::{MacroAction, MacroActionKind},
     mode::{draw_grid, move_to_column_center, ModeTransition},
 };
 
@@ -74,6 +74,7 @@ pub(super) fn handle_key<B: Backend>(
                 drag_origin: None,
                 recorded_actions: Vec::new(),
                 drag_start_keys: String::new(),
+                last_action_at: None,
             }))
         }
         KeyEvent::Char(ch)
@@ -155,7 +156,10 @@ pub(super) fn handle_key<B: Backend>(
             ) =>
         {
             Ok(ModeTransition::Enter(Mode::MacroBindKey {
-                actions: vec![MacroAction::Click(input_state.keys())],
+                actions: vec![MacroAction::new(
+                    MacroActionKind::Click(input_state.keys()),
+                    0,
+                )],
             }))
         }
         KeyEvent::MacroMenu

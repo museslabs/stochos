@@ -42,7 +42,24 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
             }
             ModeTransition::Back => {
                 if let Some(prev) = transition_stack.pop() {
-                    mode = prev;
+                    // Keep the timing baseline only for plain cell-selection undo within
+                    // recording: same action count AND same drag state. Anything else (action
+                    // dropped, drag attempt abandoned, return from a foreign mode) is a
+                    // discarded attempt whose elapsed time shouldn't count toward the next
+                    // wait_ms.
+                    let keep = matches!(
+                        (&mode, &prev),
+                        (
+                            Mode::MacroRecording {
+                                recorded_actions: cur, drag_origin: cur_drag, ..
+                            },
+                            Mode::MacroRecording {
+                                recorded_actions: prev_acts, drag_origin: prev_drag, ..
+                            },
+                        ) if cur.len() == prev_acts.len()
+                            && cur_drag.is_some() == prev_drag.is_some()
+                    );
+                    mode = if keep { prev } else { prev.reset_timing_baseline() };
                     mode.draw(backend, &mut pixels, w, h, &macro_store)?;
                 }
             }
