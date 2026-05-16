@@ -83,6 +83,11 @@ pub(super) fn handle_key<B: Backend>(
             target: None,
             drag_origin: None,
         })),
+        KeyEvent::FreeMode => Ok(ModeTransition::Enter(Mode::Free {
+            x: cx,
+            y: cy,
+            speed: config().free.base_speed.max(1),
+        })),
         _ => Ok(ModeTransition::Stay),
     }
 }

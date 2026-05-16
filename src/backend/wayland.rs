@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::os::fd::AsFd;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 
 use wayland_client::protocol::wl_pointer::{Axis, AxisSource};
 use wayland_client::{
@@ -23,6 +25,16 @@ use crate::config::{config, Key};
 
 const BTN_LEFT: u32 = 0x110;
 const BTN_RIGHT: u32 = 0x111;
+
+const REPEAT_DELAY_MS: u64 = 300;
+const REPEAT_RATE_HZ: u64 = 25;
+
+#[derive(Clone, Copy)]
+struct HeldKey {
+    keycode: u32,
+    event: KeyEvent,
+    next_repeat_at: Instant,
+}
 
 /// Wayland backend. Holds the event queue alongside the state so that
 /// `Backend` methods can call `roundtrip` / `blocking_dispatch` freely
@@ -57,6 +69,7 @@ impl WaylandBackend {
             pending_key: None,
             shift_held: false,
             current_output: None,
+            held: None,
         };
 
         eq.roundtrip(&mut state).context("initial roundtrip")?;
@@ -320,10 +333,54 @@ impl Backend for WaylandBackend {
             if self.state.surface.is_none() {
                 return Ok(None);
             }
+
             self.eq
-                .blocking_dispatch(&mut self.state)
-                .context("blocking_dispatch")?;
+                .dispatch_pending(&mut self.state)
+                .context("dispatch_pending")?;
+            if self.state.pending_key.is_some() {
+                continue;
+            }
+
+            if let Some(ev) = self.state.pop_repeat() {
+                self.ensure_vp();
+                return Ok(Some(ev));
+            }
+
+            self.wait_for_events()?;
         }
+    }
+}
+
+impl WaylandBackend {
+    fn wait_for_events(&mut self) -> Result<()> {
+        self.eq.flush().context("flush wayland events")?;
+
+        let Some(guard) = self.eq.prepare_read() else {
+            self.eq
+                .dispatch_pending(&mut self.state)
+                .context("dispatch_pending after prepare_read None")?;
+            return Ok(());
+        };
+
+        let timeout = match self.state.time_to_next_repeat() {
+            None => PollTimeout::NONE,
+            Some(d) => {
+                let ms = d.as_millis().min(u16::MAX as u128) as u16;
+                PollTimeout::try_from(ms).unwrap_or(PollTimeout::ZERO)
+            }
+        };
+
+        let fd = guard.connection_fd();
+        let mut pfds = [PollFd::new(fd, PollFlags::POLLIN)];
+        let ready = poll(&mut pfds, timeout).context("poll wayland fd")?;
+
+        if ready > 0 {
+            guard.read().context("read wayland events")?;
+            self.eq
+                .dispatch_pending(&mut self.state)
+                .context("dispatch_pending after read")?;
+        }
+        Ok(())
     }
 }
 
@@ -345,6 +402,31 @@ struct WaylandState {
     pending_key: Option<KeyEvent>,
     shift_held: bool,
     current_output: Option<wl_output::WlOutput>,
+    held: Option<HeldKey>,
+}
+
+impl WaylandState {
+    /// If a key is held, how long until we should fire the next synthesized
+    /// repeat. `None` means nothing is held (caller can block indefinitely).
+    fn time_to_next_repeat(&self) -> Option<Duration> {
+        let held = self.held.as_ref()?;
+        Some(
+            held.next_repeat_at
+                .saturating_duration_since(Instant::now()),
+        )
+    }
+
+    /// If a key is held and its next repeat time has arrived, advance the
+    /// schedule and return the event that should be dispatched.
+    fn pop_repeat(&mut self) -> Option<KeyEvent> {
+        let held = self.held.as_mut()?;
+        if held.next_repeat_at > Instant::now() {
+            return None;
+        }
+        let interval = Duration::from_millis(1000 / REPEAT_RATE_HZ.max(1));
+        held.next_repeat_at = Instant::now() + interval;
+        Some(held.event)
+    }
 }
 
 impl WaylandState {
@@ -454,31 +536,44 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_keyboard::Event::Key {
-            key,
-            state: WEnum::Value(key_state),
-            ..
-        } = event
-        {
-            match key_state {
+        match event {
+            wl_keyboard::Event::Key {
+                key,
+                state: WEnum::Value(key_state),
+                ..
+            } => match key_state {
                 wl_keyboard::KeyState::Pressed => match key {
                     42 | 54 => state.shift_held = true,
                     _ => {
-                        state.pending_key = keycode_to_key(key, state.shift_held).and_then(|k| {
+                        let decoded = keycode_to_key(key, state.shift_held).and_then(|k| {
                             config().keys.to_event(k).or(match k {
                                 Key::Char(c) => Some(KeyEvent::Char(c)),
                                 _ => None,
                             })
                         });
+                        state.pending_key = decoded;
+                        state.held = decoded.map(|event| HeldKey {
+                            keycode: key,
+                            event,
+                            next_repeat_at: Instant::now() + Duration::from_millis(REPEAT_DELAY_MS),
+                        });
                     }
                 },
-                wl_keyboard::KeyState::Released => {
-                    if key == 42 || key == 54 {
-                        state.shift_held = false;
+                wl_keyboard::KeyState::Released => match key {
+                    42 | 54 => state.shift_held = false,
+                    _ => {
+                        if matches!(state.held, Some(h) if h.keycode == key) {
+                            state.held = None;
+                        }
                     }
-                }
+                },
                 _ => {}
+            },
+            // Focus loss: drop any held key so repeats don't fire in the background.
+            wl_keyboard::Event::Leave { .. } => {
+                state.held = None;
             }
+            _ => {}
         }
     }
 }

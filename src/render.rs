@@ -97,7 +97,11 @@ pub fn render_grid(buf: &mut [u8], w: u32, h: u32, input: &InputState, dragging:
     let gap = 3u32;
     let label_w = char_w * 2 + gap;
     let colors = &cfg.colors;
-    let cell_normal = if dragging { colors.cell_drag } else { colors.cell_normal };
+    let cell_normal = if dragging {
+        colors.cell_drag
+    } else {
+        colors.cell_normal
+    };
 
     for row in 0..nrows {
         for col in 0..ncols {
@@ -110,7 +114,11 @@ pub fn render_grid(buf: &mut [u8], w: u32, h: u32, input: &InputState, dragging:
                 InputState::First => (Some(cell_normal), colors.text_first, colors.text_second),
                 InputState::Second(typed) => {
                     if first_hint == *typed {
-                        (Some(colors.cell_highlight), colors.text_highlight, colors.text_second)
+                        (
+                            Some(colors.cell_highlight),
+                            colors.text_highlight,
+                            colors.text_second,
+                        )
                     } else {
                         (None, colors.text_dim, colors.text_dim)
                     }
@@ -201,6 +209,69 @@ pub fn render_rec_indicator(buf: &mut [u8], w: u32) {
     let mut c = Canvas { buf, w };
     c.fill_rect(8, 8, 8 * scale * 4, line_height(scale), colors.rec_bg);
     c.draw_text(12, 12, b"REC", colors.text_white, scale);
+}
+
+pub fn render_free(buf: &mut [u8], w: u32, h: u32, x: u32, y: u32, speed: u32) {
+    let cfg = config();
+    let colors = &cfg.colors;
+    let mut c = Canvas { buf, w };
+    c.clear();
+
+    // Crosshair centered on the cursor position.
+    let arm = 14u32;
+    let thickness = 2u32;
+    let gap = 4u32;
+    let hbar_y = y.saturating_sub(thickness / 2);
+    let vbar_x = x.saturating_sub(thickness / 2);
+    // Left arm
+    let left_end = x.saturating_sub(gap);
+    let left_start = left_end.saturating_sub(arm);
+    c.fill_rect(
+        left_start,
+        hbar_y,
+        left_end - left_start,
+        thickness,
+        colors.crosshair,
+    );
+    // Right arm
+    let right_start = (x + gap).min(w);
+    let right_end = (right_start + arm).min(w);
+    c.fill_rect(
+        right_start,
+        hbar_y,
+        right_end - right_start,
+        thickness,
+        colors.crosshair,
+    );
+    // Top arm
+    let top_end = y.saturating_sub(gap);
+    let top_start = top_end.saturating_sub(arm);
+    c.fill_rect(
+        vbar_x,
+        top_start,
+        thickness,
+        top_end - top_start,
+        colors.crosshair,
+    );
+    // Bottom arm
+    let bot_start = (y + gap).min(h);
+    let bot_end = (bot_start + arm).min(h);
+    c.fill_rect(
+        vbar_x,
+        bot_start,
+        thickness,
+        bot_end - bot_start,
+        colors.crosshair,
+    );
+
+    let scale = cfg.font_size();
+    let label = format!("FREE speed:{speed}");
+    let bytes = label.as_bytes();
+    let pad = 2 * scale;
+    let lh = line_height(scale);
+    let panel_w = bytes.len() as u32 * char_width(scale) + pad * 2;
+    c.fill_rect(8, 8, panel_w, lh, colors.panel_bg);
+    c.draw_text(8 + pad, 12, bytes, colors.text_white, scale);
 }
 
 pub fn render_macro_bind_key(buf: &mut [u8], w: u32, h: u32) {
@@ -406,16 +477,36 @@ impl<'a> Panel<'a> {
                 colors.selected_bg,
             );
         }
-        let text_color = if selected { colors.text_highlight } else { colors.text_white };
+        let text_color = if selected {
+            colors.text_highlight
+        } else {
+            colors.text_white
+        };
         match bind_key {
             Some(k) => {
-                self.c.draw_text(self.tx, self.ty, b"[", colors.text_grey, self.scale);
-                self.c.draw_glyph(self.tx + cw, self.ty, k, colors.text_grey, self.scale);
-                self.c.draw_text(self.tx + 2 * cw, self.ty, b"] ", colors.text_grey, self.scale);
+                self.c
+                    .draw_text(self.tx, self.ty, b"[", colors.text_grey, self.scale);
+                self.c
+                    .draw_glyph(self.tx + cw, self.ty, k, colors.text_grey, self.scale);
+                self.c.draw_text(
+                    self.tx + 2 * cw,
+                    self.ty,
+                    b"] ",
+                    colors.text_grey,
+                    self.scale,
+                );
             }
-            None => self.c.draw_text(self.tx, self.ty, b"[ ] ", colors.text_grey, self.scale),
+            None => self
+                .c
+                .draw_text(self.tx, self.ty, b"[ ] ", colors.text_grey, self.scale),
         }
-        self.c.draw_text(self.tx + 4 * cw, self.ty, name.as_bytes(), text_color, self.scale);
+        self.c.draw_text(
+            self.tx + 4 * cw,
+            self.ty,
+            name.as_bytes(),
+            text_color,
+            self.scale,
+        );
         self.ty += line_height(self.scale);
         self
     }
@@ -449,7 +540,11 @@ fn render_sub_grid(
 
     c.fill_rect(cell_x, cell_y, cell_w, cell_h, colors.sub_bg);
 
-    let border = if dragging { colors.border_dragging } else { colors.border };
+    let border = if dragging {
+        colors.border_dragging
+    } else {
+        colors.border
+    };
     c.fill_rect(cell_x, cell_y, cell_w, 1, border);
     c.fill_rect(cell_x, cell_y + cell_h - 1, cell_w, 1, border);
     c.fill_rect(cell_x, cell_y, 1, cell_h, border);

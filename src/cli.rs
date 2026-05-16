@@ -9,6 +9,10 @@ pub struct Args {
     #[arg(long, group = "mode")]
     pub bisect: bool,
 
+    /// Start in free mode (move the cursor manually)
+    #[arg(long, group = "mode")]
+    pub free: bool,
+
     /// Allow multiple concurrent instances
     #[arg(long)]
     pub allow_multiple: bool,
@@ -22,9 +26,13 @@ pub struct Args {
 impl Args {
     pub fn initial_mode(&self) -> InitialMode {
         if self.bisect {
-            InitialMode::Bisect
-        } else {
-            InitialMode::Normal
+            return InitialMode::Bisect;
         }
+
+        if self.free {
+            return InitialMode::Free;
+        }
+
+        InitialMode::Normal
     }
 }
