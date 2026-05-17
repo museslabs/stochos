@@ -352,10 +352,10 @@ mod from_hex {
         let s = String::deserialize(deserializer)?;
         let hex = s.trim_start_matches("#");
         let rgba = match hex.len() {
-            6 => u32::from_str_radix(&hex, 16)
+            6 => u32::from_str_radix(hex, 16)
                 .map(|a| a << 8)
                 .unwrap_or_default(),
-            8 => u32::from_str_radix(&hex, 16).unwrap_or_default(),
+            8 => u32::from_str_radix(hex, 16).unwrap_or_default(),
             _ => 0,
         };
         Ok([
@@ -568,11 +568,8 @@ impl Config {
     /// Calculate dynamic grid columns based on screen width
     pub fn dynamic_cols(&self, screen_width: u32) -> u32 {
         if let Some(target) = self.grid.target_cell_size {
-            if target > 0 {
-                let calculated = (screen_width / target)
-                    .max(2)
-                    .min(self.grid.hints.len() as u32);
-                return calculated;
+            if let Some(calculated) = screen_width.checked_div(target) {
+                return calculated.max(2).min(self.grid.hints.len() as u32);
             }
         }
         self.cols()
@@ -581,11 +578,8 @@ impl Config {
     /// Calculate dynamic grid rows based on screen height
     pub fn dynamic_rows(&self, screen_height: u32) -> u32 {
         if let Some(target) = self.grid.target_cell_size {
-            if target > 0 {
-                let calculated = (screen_height / target)
-                    .max(2)
-                    .min(self.grid.hints.len() as u32);
-                return calculated;
+            if let Some(calculated) = screen_height.checked_div(target) {
+                return calculated.max(2).min(self.grid.hints.len() as u32);
             }
         }
         self.rows()
@@ -596,8 +590,7 @@ fn write_default(path: &PathBuf, config: &Config) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let data = toml::to_string_pretty(config)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let data = toml::to_string_pretty(config).map_err(std::io::Error::other)?;
     std::fs::write(path, data)
 }
 

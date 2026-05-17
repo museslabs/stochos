@@ -107,8 +107,8 @@ pub(super) fn handle_key<B: Backend>(
             };
 
             Ok(ModeTransition::Enter(Mode::Free {
-                x: x,
-                y: y,
+                x,
+                y,
                 speed: config().free.base_speed.max(1),
             }))
         }

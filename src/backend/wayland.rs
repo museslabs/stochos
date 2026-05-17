@@ -380,7 +380,7 @@ impl WaylandBackend {
             None => PollTimeout::NONE,
             Some(d) => {
                 let ms = d.as_millis().min(u16::MAX as u128) as u16;
-                PollTimeout::try_from(ms).unwrap_or(PollTimeout::ZERO)
+                PollTimeout::from(ms)
             }
         };
 

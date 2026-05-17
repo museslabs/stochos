@@ -20,8 +20,8 @@ use objc2::{class, define_class, msg_send, MainThreadOnly};
 
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSColor, NSEvent,
-    NSEventMask, NSPanel, NSScreen, NSView, NSWindowAnimationBehavior,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSEventMask, NSPanel, NSScreen, NSView, NSWindowAnimationBehavior, NSWindowCollectionBehavior,
+    NSWindowStyleMask,
 };
 use objc2_foundation::{MainThreadMarker, NSDate, NSPoint, NSRect, NSSize, NSString};
 
@@ -450,9 +450,8 @@ impl MacosBackend {
     fn pump_events_briefly(&self) {
         let past = NSDate::distantPast();
         loop {
-            let event: Option<Retained<NSEvent>> = self
-                .app
-                .nextEventMatchingMask_untilDate_inMode_dequeue(
+            let event: Option<Retained<NSEvent>> =
+                self.app.nextEventMatchingMask_untilDate_inMode_dequeue(
                     NSEventMask::Any,
                     Some(&past),
                     &default_run_loop_mode(),
@@ -779,9 +778,7 @@ unsafe extern "C" fn event_tap_callback(
     } else {
         let mut buf = [0u16; 8];
         let mut actual: usize = 0;
-        unsafe {
-            CGEventKeyboardGetUnicodeString(event, buf.len(), &mut actual, buf.as_mut_ptr())
-        };
+        unsafe { CGEventKeyboardGetUnicodeString(event, buf.len(), &mut actual, buf.as_mut_ptr()) };
         if actual == 0 {
             None
         } else {

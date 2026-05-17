@@ -24,7 +24,11 @@ impl InputState {
         let cfg = config();
         match self {
             InputState::SubFirst { col, row } => {
-                format!("{}{}", cfg.hints()[*col as usize], cfg.hints()[*row as usize])
+                format!(
+                    "{}{}",
+                    cfg.hints()[*col as usize],
+                    cfg.hints()[*row as usize]
+                )
             }
             InputState::Ready {
                 col,

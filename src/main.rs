@@ -24,6 +24,7 @@ fn acquire_lock(allow_multiple: bool) -> anyhow::Result<Option<LockGuard>> {
 
     let file = OpenOptions::new()
         .create(true)
+        .truncate(true)
         .read(true)
         .write(true)
         .open(lock_path)?;

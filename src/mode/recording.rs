@@ -13,6 +13,7 @@ fn elapsed_ms(last: Option<Instant>, now: Instant) -> u64 {
         .unwrap_or(0)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn handle_key<B: Backend>(
     width: u32,
     height: u32,
@@ -141,7 +142,10 @@ pub(super) fn handle_key<B: Backend>(
             match key {
                 KeyEvent::Click => {
                     backend.click(x, y)?;
-                    new_actions.push(MacroAction::new(MacroActionKind::Click(current_keys), wait_ms));
+                    new_actions.push(MacroAction::new(
+                        MacroActionKind::Click(current_keys),
+                        wait_ms,
+                    ));
                 }
                 KeyEvent::DoubleClick => {
                     backend.double_click(x, y)?;
