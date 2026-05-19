@@ -239,6 +239,32 @@ impl Backend for WaylandBackend {
         Ok(())
     }
 
+    fn triple_click(&mut self, x: u32, y: u32) -> Result<()> {
+        self.teardown_surface()?;
+
+        if let Some(vp) = &self.state.vp {
+            vp.motion_absolute(timestamp(), x, y, self.state.screen_w, self.state.screen_h);
+            vp.frame();
+        }
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after motion")?;
+
+        if let Some(vp) = &self.state.vp {
+            for _ in 0..3 {
+                let ts = timestamp();
+                vp.button(ts, BTN_LEFT, wl_pointer::ButtonState::Pressed);
+                vp.frame();
+                vp.button(ts, BTN_LEFT, wl_pointer::ButtonState::Released);
+                vp.frame();
+            }
+        }
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after click")?;
+        Ok(())
+    }
+
     /// Destroy the overlay so the compositor removes it from the surface stack,
     /// then re-send motion to trigger a focus update, then right click.
     fn right_click(&mut self, x: u32, y: u32) -> Result<()> {

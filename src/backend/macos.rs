@@ -656,6 +656,22 @@ impl Backend for MacosBackend {
         Ok(())
     }
 
+    fn triple_click(&mut self, x: u32, y: u32) -> Result<()> {
+        self.hide_overlay();
+        self.focus_target_app();
+        for count in 1..=3 {
+            self.click_at(
+                K_CGEVENT_LEFT_MOUSE_DOWN,
+                K_CGEVENT_LEFT_MOUSE_UP,
+                K_CGMOUSE_BUTTON_LEFT,
+                x,
+                y,
+                count,
+            );
+        }
+        Ok(())
+    }
+
     fn right_click(&mut self, x: u32, y: u32) -> Result<()> {
         self.hide_overlay();
         self.focus_target_app();

@@ -240,6 +240,14 @@ impl Backend for X11Backend {
         self.fake_button_click(BTN_LEFT)
     }
 
+    fn triple_click(&mut self, x: u32, y: u32) -> Result<()> {
+        self.teardown()?;
+        self.warp_and_sync(x, y)?;
+        self.fake_button_click(BTN_LEFT)?;
+        self.fake_button_click(BTN_LEFT)?;
+        self.fake_button_click(BTN_LEFT)
+    }
+
     fn right_click(&mut self, x: u32, y: u32) -> Result<()> {
         self.teardown()?;
         self.warp_and_sync(x, y)?;
