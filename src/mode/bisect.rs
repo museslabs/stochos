@@ -30,6 +30,10 @@ pub(super) fn handle_key<B: Backend>(
             backend.double_click(cx, cy)?;
             Ok(ModeTransition::Exit)
         }
+        KeyEvent::TripleClick => {
+            backend.triple_click(cx, cy)?;
+            Ok(ModeTransition::Exit)
+        }
         KeyEvent::RightClick => {
             backend.right_click(cx, cy)?;
             Ok(ModeTransition::Exit)

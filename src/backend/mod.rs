@@ -9,6 +9,7 @@ pub enum KeyEvent {
     Char(char),
     Click,
     DoubleClick,
+    TripleClick,
     RightClick,
     Close,
     Undo,
@@ -42,6 +43,9 @@ pub trait Backend {
 
     /// Tear down the overlay, double click at (x, y), then return.
     fn double_click(&mut self, x: u32, y: u32) -> Result<()>;
+
+    /// Tear down the overlay, triple click at (x, y), then return.
+    fn triple_click(&mut self, x: u32, y: u32) -> Result<()>;
 
     /// Tear down the overlay, right click at (x, y), then return.
     fn right_click(&mut self, x: u32, y: u32) -> Result<()>;
