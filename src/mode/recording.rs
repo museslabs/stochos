@@ -131,7 +131,7 @@ pub(super) fn handle_key<B: Backend>(
                 InputState::Ready { .. } => Ok(ModeTransition::Stay),
             }
         }
-        KeyEvent::Click | KeyEvent::DoubleClick | KeyEvent::RightClick
+        KeyEvent::Click | KeyEvent::DoubleClick | KeyEvent::TripleClick | KeyEvent::RightClick
             if target.is_some() && drag_origin.is_none() =>
         {
             let (x, y) = target.unwrap();
@@ -151,6 +151,13 @@ pub(super) fn handle_key<B: Backend>(
                     backend.double_click(x, y)?;
                     new_actions.push(MacroAction::new(
                         MacroActionKind::DoubleClick(current_keys),
+                        wait_ms,
+                    ));
+                }
+                KeyEvent::TripleClick => {
+                    backend.triple_click(x, y)?;
+                    new_actions.push(MacroAction::new(
+                        MacroActionKind::TripleClick(current_keys),
                         wait_ms,
                     ));
                 }
