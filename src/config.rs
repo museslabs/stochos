@@ -213,6 +213,7 @@ pub struct KeyBindings {
     pub free_mode: Key,
     pub click: Key,
     pub double_click: Key,
+    pub triple_click: Key,
     pub close: Key,
     pub undo: Key,
     pub macro_menu: Key,
@@ -232,6 +233,7 @@ impl Default for KeyBindings {
             free_mode: Key::Char('v'),
             click: Key::Space,
             double_click: Key::Enter,
+            triple_click: Key::Char('m'),
             close: Key::Escape,
             undo: Key::Backspace,
             macro_menu: Key::Tab,
@@ -263,6 +265,9 @@ impl KeyBindings {
         }
         if key == self.double_click {
             return Some(KeyEvent::DoubleClick);
+        }
+        if key == self.triple_click {
+            return Some(KeyEvent::TripleClick);
         }
         if key == self.close {
             return Some(KeyEvent::Close);

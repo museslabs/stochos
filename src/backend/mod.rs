@@ -9,6 +9,7 @@ pub enum KeyEvent {
     Char(char),
     Click,
     DoubleClick,
+    TripleClick,
     RightClick,
     Close,
     Undo,
