@@ -13,6 +13,7 @@ use super::{Backend, KeyEvent};
 use crate::config::{config, Key};
 
 const BTN_LEFT: u8 = 1;
+const BTN_MIDDLE: u8 = 2;
 const BTN_RIGHT: u8 = 3;
 const BTN_SCROLL_UP: u8 = 4;
 const BTN_SCROLL_DOWN: u8 = 5;
@@ -244,6 +245,12 @@ impl Backend for X11Backend {
         self.teardown()?;
         self.warp_and_sync(x, y)?;
         self.fake_button_click(BTN_RIGHT)
+    }
+
+    fn middle_click(&mut self, x: u32, y: u32) -> Result<()> {
+        self.teardown()?;
+        self.warp_and_sync(x, y)?;
+        self.fake_button_click(BTN_MIDDLE)
     }
 
     fn drag_select(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) -> Result<()> {
