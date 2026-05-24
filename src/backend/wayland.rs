@@ -25,6 +25,7 @@ use crate::config::{config, Key};
 
 const BTN_LEFT: u32 = 0x110;
 const BTN_RIGHT: u32 = 0x111;
+const BTN_MIDDLE: u32 = 0x112;
 
 const REPEAT_DELAY_MS: u64 = 300;
 const REPEAT_RATE_HZ: u64 = 25;
@@ -283,6 +284,32 @@ impl Backend for WaylandBackend {
             vp.button(ts, BTN_RIGHT, wl_pointer::ButtonState::Pressed);
             vp.frame();
             vp.button(ts, BTN_RIGHT, wl_pointer::ButtonState::Released);
+            vp.frame();
+        }
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after click")?;
+        Ok(())
+    }
+
+    /// Destroy the overlay so the compositor removes it from the surface stack,
+    /// then re-send motion to trigger a focus update, then middle click.
+    fn middle_click(&mut self, x: u32, y: u32) -> Result<()> {
+        self.teardown_surface()?;
+
+        if let Some(vp) = &self.state.vp {
+            vp.motion_absolute(timestamp(), x, y, self.state.screen_w, self.state.screen_h);
+            vp.frame();
+        }
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after motion")?;
+
+        if let Some(vp) = &self.state.vp {
+            let ts = timestamp();
+            vp.button(ts, BTN_MIDDLE, wl_pointer::ButtonState::Pressed);
+            vp.frame();
+            vp.button(ts, BTN_MIDDLE, wl_pointer::ButtonState::Released);
             vp.frame();
         }
         self.eq

@@ -219,6 +219,7 @@ pub struct KeyBindings {
     pub macro_menu: Key,
     pub macro_record: Key,
     pub right_click: Key,
+    pub middle_click: Key,
     pub scroll_up: Key,
     pub scroll_down: Key,
     pub scroll_left: Key,
@@ -239,6 +240,7 @@ impl Default for KeyBindings {
             macro_menu: Key::Tab,
             macro_record: Key::Char('`'),
             right_click: Key::Delete,
+            middle_click: Key::Insert,
             scroll_up: Key::Up,
             scroll_down: Key::Down,
             scroll_left: Key::Left,
@@ -283,6 +285,9 @@ impl KeyBindings {
         }
         if key == self.right_click {
             return Some(KeyEvent::RightClick);
+        }
+        if key == self.middle_click {
+            return Some(KeyEvent::MiddleClick);
         }
         if key == self.scroll_up {
             return Some(KeyEvent::ScrollUp);

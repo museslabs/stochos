@@ -686,6 +686,11 @@ impl Backend for MacosBackend {
         Ok(())
     }
 
+    fn middle_click(&mut self, x: u32, y: u32) -> Result<()> {
+        unimplemented!();
+        Ok(())
+    }
+
     fn drag_select(&mut self, x1: u32, y1: u32, x2: u32, y2: u32) -> Result<()> {
         self.hide_overlay();
         self.focus_target_app();
