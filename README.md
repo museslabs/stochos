@@ -85,6 +85,7 @@ Released binaries are not codesigned with a Developer ID, so after every upgrade
 | Space | Click |
 | Enter | Double click |
 | Delete | Right click |
+| Insert | Middle click |
 | Escape | Close overlay |
 | Backspace | Undo last step |
 | Arrow keys | Scroll (up/down/left/right) |
@@ -114,7 +115,7 @@ An alternative grid mode that recursively subdivides. Instead of two-key combos 
 
 - Enter bisect mode: press `b` from normal mode, or launch with `--bisect`
 - Each hint key splits the current region into a smaller grid (2x2 by default)
-- Space / Enter / Delete act (click / double-click / right-click) at the center of the current region and exit
+- Space / Enter / Delete / Insert act (click / double-click / right-click / middle-click) at the center of the current region and exit
 - Backspace pops back up one level
 - Subdivision stops automatically once a cell would fall below `min_cell_size` pixels — the region is highlighted and you can act or back out
 - Press `n` to switch back to normal mode
@@ -126,7 +127,7 @@ An alternative mode for direct keyboard-driven cursor movement. Instead of selec
 - Enter free mode: press `v` from normal or bisect mode, or launch with `--free` (starts at mouse position) or `--free-center` (starts at screen center)
 - Move the cursor with `h` / `j` / `k` / `l` (left / down / up / right)
 - Press `=` to increase speed and `-` to decrease it; the current speed is shown in the top-left corner
-- Space / Enter / Delete act (click / double-click / right-click) and exit
+- Space / Enter / Delete / Insert act (click / double-click / right-click / middle-click) and exit
 - Backspace returns to the previous mode; Escape closes the overlay
 - Key repeat is supported: hold a movement key to move continuously
 
@@ -181,6 +182,7 @@ double_click = "enter"
 close = "escape"
 undo = "backspace"
 right_click = "delete"
+middle_click = "insert"
 scroll_up = "up"
 scroll_down = "down"
 scroll_left = "left"
