@@ -276,6 +276,11 @@ pub(super) fn replay_macro(
                     backend.right_click(x, y)?;
                 }
             }
+            MacroActionKind::MiddleClick(keys) => {
+                if let Some((x, y)) = keys_to_pos(keys, w, h) {
+                    backend.middle_click(x, y)?;
+                }
+            }
             MacroActionKind::Drag(start_keys, end_keys) => {
                 if let (Some((x1, y1)), Some((x2, y2))) =
                     (keys_to_pos(start_keys, w, h), keys_to_pos(end_keys, w, h))

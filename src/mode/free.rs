@@ -33,6 +33,10 @@ pub(super) fn handle_key<B: Backend>(
             backend.right_click(x, y)?;
             Ok(ModeTransition::Exit)
         }
+        KeyEvent::MiddleClick => {
+            backend.middle_click(x, y)?;
+            Ok(ModeTransition::Exit)
+        }
         KeyEvent::ScrollUp => {
             backend.scroll_up()?;
             Ok(ModeTransition::Redraw)
