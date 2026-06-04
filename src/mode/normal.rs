@@ -41,6 +41,12 @@ pub(super) fn handle_key<B: Backend>(
             }
             Ok(ModeTransition::Exit)
         }
+        KeyEvent::TripleClick if drag_origin.is_none() => {
+            if let Some((x, y)) = target {
+                backend.triple_click(x, y)?;
+            }
+            Ok(ModeTransition::Exit)
+        }
         KeyEvent::RightClick if drag_origin.is_none() => {
             if let Some((x, y)) = target {
                 backend.right_click(x, y)?;

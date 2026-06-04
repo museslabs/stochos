@@ -266,6 +266,11 @@ pub(super) fn replay_macro(
                     backend.double_click(x, y)?;
                 }
             }
+            MacroActionKind::TripleClick(keys) => {
+                if let Some((x, y)) = keys_to_pos(keys, w, h) {
+                    backend.triple_click(x, y)?;
+                }
+            }
             MacroActionKind::RightClick(keys) => {
                 if let Some((x, y)) = keys_to_pos(keys, w, h) {
                     backend.right_click(x, y)?;
