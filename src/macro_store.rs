@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum MacroActionKind {
@@ -32,22 +32,26 @@ impl MacroAction {
 
 impl<'de> Deserialize<'de> for MacroAction {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // Accept both the new `{ "kind": ..., "wait_ms": N }` shape and the
-        // legacy bare-enum shape (e.g. `{ "Click": "as" }`) from older macros.json files.
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Repr {
-            New {
+        use serde::de::Error as _;
+        // Buffer into a Value and dispatch on shape by hand. A `#[serde(untagged)]`
+        // enum here swallows the real cause (e.g. an unknown action kind) behind
+        // "data did not match any variant of untagged enum Repr".
+        let value = serde_json::Value::deserialize(deserializer)?;
+        // The new shape carries a `kind` field; the legacy shape is the bare
+        // externally-tagged action kind (e.g. `{ "Click": "as" }`) from older files.
+        if value.get("kind").is_some() {
+            #[derive(Deserialize)]
+            struct New {
                 kind: MacroActionKind,
                 #[serde(default)]
                 wait_ms: u64,
-            },
-            Legacy(MacroActionKind),
+            }
+            let New { kind, wait_ms } = serde_json::from_value(value).map_err(D::Error::custom)?;
+            Ok(MacroAction { kind, wait_ms })
+        } else {
+            let kind = serde_json::from_value(value).map_err(D::Error::custom)?;
+            Ok(MacroAction { kind, wait_ms: 0 })
         }
-        Ok(match Repr::deserialize(deserializer)? {
-            Repr::New { kind, wait_ms } => MacroAction { kind, wait_ms },
-            Repr::Legacy(kind) => MacroAction { kind, wait_ms: 0 },
-        })
     }
 }
 
@@ -65,13 +69,35 @@ pub struct MacroStore {
 }
 
 impl MacroStore {
+    /// Best-effort load for everything except `--list-macros`: unparseable
+    /// entries are skipped with a warning and a malformed file yields an empty
+    /// store, so launching the overlay never fails over one bad macro.
     pub fn load() -> Self {
         let path = config_path();
-        let macros = fs::read_to_string(&path)
-            .ok()
-            .and_then(|data| serde_json::from_str(&data).ok())
-            .unwrap_or_default();
+        let macros = match read_entries(&path) {
+            Ok((macros, errors)) => {
+                for err in &errors {
+                    eprintln!("stochos: skipping {err}");
+                }
+                macros
+            }
+            Err(e) => {
+                eprintln!("stochos: ignoring macros at {}: {e:#}", path.display());
+                Vec::new()
+            }
+        };
         MacroStore { macros, path }
+    }
+
+    /// Strict load for `--list-macros`: a present-but-unparseable file is a hard
+    /// error that names the offending macro, instead of silently hiding it.
+    pub fn load_strict() -> anyhow::Result<Self> {
+        let path = config_path();
+        let (macros, errors) = read_entries(&path)?;
+        if !errors.is_empty() {
+            anyhow::bail!("{}", errors.join("\n"));
+        }
+        Ok(MacroStore { macros, path })
     }
 
     pub fn save(&self) -> anyhow::Result<()> {
@@ -110,6 +136,37 @@ impl MacroStore {
         }
         self.macros.push(entry);
     }
+}
+
+/// Parse macros.json into (valid entries, per-entry error messages). The outer
+/// error covers an unreadable file or invalid JSON syntax; a missing file is
+/// not an error (empty store). Parsing entry-by-entry lets a bad macro name
+/// itself rather than failing the whole file with a misleading position.
+fn read_entries(path: &Path) -> anyhow::Result<(Vec<MacroEntry>, Vec<String>)> {
+    use anyhow::Context as _;
+    let data = match fs::read_to_string(path) {
+        Ok(data) => data,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((Vec::new(), Vec::new())),
+        Err(e) => {
+            return Err(anyhow::Error::new(e)
+                .context(format!("failed to read macros at {}", path.display())))
+        }
+    };
+    let raw: Vec<serde_json::Value> = serde_json::from_str(&data)
+        .with_context(|| format!("failed to parse macros at {}", path.display()))?;
+    let mut macros = Vec::with_capacity(raw.len());
+    let mut errors = Vec::new();
+    for (i, entry) in raw.into_iter().enumerate() {
+        let label = entry
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map_or_else(|| "<unnamed>".to_string(), |n| format!("\"{n}\""));
+        match serde_json::from_value::<MacroEntry>(entry) {
+            Ok(m) => macros.push(m),
+            Err(e) => errors.push(format!("macro #{} ({label}): {e}", i + 1)),
+        }
+    }
+    Ok((macros, errors))
 }
 
 fn config_path() -> PathBuf {

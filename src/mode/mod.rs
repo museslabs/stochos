@@ -236,7 +236,7 @@ pub(super) fn draw_grid(
     backend.present(pixels, w, h)
 }
 
-pub(super) fn replay_macro(
+pub fn replay_macro(
     actions: &[MacroAction],
     w: u32,
     h: u32,

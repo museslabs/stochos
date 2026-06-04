@@ -107,8 +107,39 @@ All keys are configurable (see Configuration below).
 | `--bisect` | Start the overlay directly in bisect mode |
 | `--free` | Start the overlay directly in free mode (cursor starts at current mouse position) |
 | `--free-center` | Start the overlay directly in free mode with the cursor at the center of the screen |
+| `--click` | Left-click at the current cursor position and exit (no overlay) |
+| `--double-click` | Double-click at the current cursor position and exit (no overlay) |
+| `--right-click` | Right-click at the current cursor position and exit (no overlay) |
+| `--scroll-up` / `--scroll-down` / `--scroll-left` / `--scroll-right` | Scroll once at the current cursor position and exit (no overlay) |
+| `--macro <NAME_OR_KEY>` | Replay a saved macro and exit (no overlay) — see [Headless actions](#headless-actions) |
+| `--list-macros` | List saved macros (bind key, name, action count) and exit |
 | `--allow-multiple` | Skip the single-instance lock |
 | `--print-default-config` | Print the default config (TOML) to stdout and exit. Diff against your `config.toml` to discover options added by newer versions |
+
+These flags are mutually exclusive — pick one per invocation.
+
+### Headless actions
+
+The action and `--macro` flags above each perform a single action **without
+drawing the overlay**, then exit — so you can bind them to keys in your window
+manager or call them from scripts. The click and scroll actions act at the
+**current** cursor position (there's no grid, so there's nothing to target):
+
+```sh
+stochos --right-click            # right-click wherever the cursor is
+stochos --scroll-down            # scroll down once at the cursor
+stochos --macro "open terminal"  # replay a saved macro by name
+stochos --macro t                # replay the macro whose bind key is `t`
+```
+
+`--macro` resolves its argument by **bind key** when it's a single character
+matching one, otherwise by **name** (case-insensitive). Run `--list-macros` to
+see what's available. Macros carry their own resolution-independent targets, so
+replay needs no interactive selection.
+
+Headless actions still take the single-instance lock, so they no-op while an
+overlay (or another instance) is running; add `--allow-multiple` to run one
+regardless.
 
 ### Bisect mode
 
@@ -142,7 +173,7 @@ Record multi-step mouse sequences for replay.
 
 **Record:** Press `` ` `` to start recording. Navigate and act normally (Space to click, Enter to double-click, `m` to triple-click, Tab to hover-only, `/` to drag). Press `` ` `` again to stop. You'll be prompted for an optional bind key and a name.
 
-**Replay:** Press `@` then the bind key. Or press Tab to search by name, then Enter to select.
+**Replay:** Press `@` then the bind key. Or press Tab to search by name, then Enter to select. You can also replay from the command line without opening the overlay: `stochos --macro <name-or-bind-key>` (see [Headless actions](#headless-actions)), and `stochos --list-macros` prints what's saved.
 
 **Timing.** Stochos captures the delay between each recorded action and replays at the same rhythm, so animations and page loads have time to settle. The first action has no wait (you weren't waiting for anything to start the macro). On replay, delays are scaled by `macros.playback_speed` in `config.toml` (default `1.0`, `2.0` plays twice as fast, `0.0` or negative plays instantly with no waits). You can also hand-edit the per-action `wait_ms` values in `macros.json` for fine-grained tuning.
 
