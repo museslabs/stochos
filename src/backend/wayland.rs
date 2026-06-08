@@ -2,6 +2,8 @@ use std::io::Write;
 use std::os::fd::AsFd;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use xkbcommon::xkb;
+
 use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 
 use wayland_client::protocol::wl_pointer::{Axis, AxisSource};
@@ -69,7 +71,8 @@ impl WaylandBackend {
             screen_h: 0,
             configured: false,
             pending_key: None,
-            shift_held: false,
+            xkb_context: xkb::Context::new(xkb::CONTEXT_NO_FLAGS),
+            xkb_state: None,
             current_output: None,
             held: None,
             pointer_pos: None,
@@ -468,7 +471,8 @@ struct WaylandState {
     screen_h: u32,
     configured: bool,
     pending_key: Option<KeyEvent>,
-    shift_held: bool,
+    xkb_context: xkb::Context,
+    xkb_state: Option<xkb::State>,
     current_output: Option<wl_output::WlOutput>,
     held: Option<HeldKey>,
     pointer_pos: Option<(u32, u32)>,
@@ -483,6 +487,23 @@ impl WaylandState {
             held.next_repeat_at
                 .saturating_duration_since(Instant::now()),
         )
+    }
+
+    /// build an xkb_state from the compositor's keymap so character keys
+    /// can resolve.
+    fn load_keymap(&mut self, fd: std::os::fd::OwnedFd, size: u32) {
+        let result = unsafe {
+            xkb::Keymap::new_from_fd(
+                &self.xkb_context,
+                fd,
+                size as usize,
+                xkb::KEYMAP_FORMAT_TEXT_V1,
+                xkb::KEYMAP_COMPILE_NO_FLAGS,
+            )
+        };
+        if let Ok(Some(km)) = result {
+            self.xkb_state = Some(xkb::State::new(&km));
+        }
     }
 
     /// If a key is held and its next repeat time has arrived, advance the
@@ -640,36 +661,50 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
         _: &QueueHandle<Self>,
     ) {
         match event {
+            wl_keyboard::Event::Keymap {
+                format: WEnum::Value(format),
+                fd,
+                size,
+            } => {
+                if format == wl_keyboard::KeymapFormat::XkbV1 {
+                    state.load_keymap(fd, size);
+                }
+            }
+            wl_keyboard::Event::Modifiers {
+                mods_depressed,
+                mods_latched,
+                mods_locked,
+                group,
+                ..
+            } => {
+                if let Some(xkb_state) = state.xkb_state.as_mut() {
+                    xkb_state.update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group);
+                }
+            }
             wl_keyboard::Event::Key {
                 key,
                 state: WEnum::Value(key_state),
                 ..
             } => match key_state {
-                wl_keyboard::KeyState::Pressed => match key {
-                    42 | 54 => state.shift_held = true,
-                    _ => {
-                        let decoded = keycode_to_key(key, state.shift_held).and_then(|k| {
-                            config().keys.to_event(k).or(match k {
-                                Key::Char(c) => Some(KeyEvent::Char(c)),
-                                _ => None,
-                            })
-                        });
-                        state.pending_key = decoded;
-                        state.held = decoded.map(|event| HeldKey {
-                            keycode: key,
-                            event,
-                            next_repeat_at: Instant::now() + Duration::from_millis(REPEAT_DELAY_MS),
-                        });
+                wl_keyboard::KeyState::Pressed => {
+                    let decoded = keycode_to_key(key, state.xkb_state.as_ref()).and_then(|k| {
+                        config().keys.to_event(k).or(match k {
+                            Key::Char(c) => Some(KeyEvent::Char(c)),
+                            _ => None,
+                        })
+                    });
+                    state.pending_key = decoded;
+                    state.held = decoded.map(|event| HeldKey {
+                        keycode: key,
+                        event,
+                        next_repeat_at: Instant::now() + Duration::from_millis(REPEAT_DELAY_MS),
+                    });
+                }
+                wl_keyboard::KeyState::Released => {
+                    if matches!(state.held, Some(h) if h.keycode == key) {
+                        state.held = None;
                     }
-                },
-                wl_keyboard::KeyState::Released => match key {
-                    42 | 54 => state.shift_held = false,
-                    _ => {
-                        if matches!(state.held, Some(h) if h.keycode == key) {
-                            state.held = None;
-                        }
-                    }
-                },
+                }
                 _ => {}
             },
             // Focus loss: drop any held key so repeats don't fire in the background.
@@ -769,9 +804,12 @@ fn timestamp() -> u32 {
         .as_millis() as u32
 }
 
-/// Maps a Wayland key code to a platform-agnostic Key.
-fn keycode_to_key(kc: u32, shift_held: bool) -> Option<Key> {
-    // Special (non-character) keys — checked first, unaffected by shift
+/// map an evdev keycode to a platform-agnostic Key.
+///
+/// look up special keycodes directly since they're layout-invariant. route
+/// character keys through xkb_state so they respect the user's layout and
+/// modifiers.
+pub(super) fn keycode_to_key(kc: u32, xkb_state: Option<&xkb::State>) -> Option<Key> {
     match kc {
         1 => return Some(Key::Escape),
         14 => return Some(Key::Backspace),
@@ -838,115 +876,12 @@ fn keycode_to_key(kc: u32, shift_held: bool) -> Option<Key> {
         _ => {}
     }
 
-    // Character keys — shift changes the produced character
-    let ch = if shift_held {
-        match kc {
-            // Shifted digits → symbols
-            2 => '!',
-            3 => '@',
-            4 => '#',
-            5 => '$',
-            6 => '%',
-            7 => '^',
-            8 => '&',
-            9 => '*',
-            10 => '(',
-            11 => ')',
-            // Shifted punctuation
-            12 => '_',
-            13 => '+',
-            26 => '{',
-            27 => '}',
-            43 => '|',
-            39 => ':',
-            40 => '"',
-            51 => '<',
-            52 => '>',
-            53 => '?',
-            41 => '~',
-            // Shifted letters → uppercase
-            16 => 'Q',
-            17 => 'W',
-            18 => 'E',
-            19 => 'R',
-            20 => 'T',
-            21 => 'Y',
-            22 => 'U',
-            23 => 'I',
-            24 => 'O',
-            25 => 'P',
-            30 => 'A',
-            31 => 'S',
-            32 => 'D',
-            33 => 'F',
-            34 => 'G',
-            35 => 'H',
-            36 => 'J',
-            37 => 'K',
-            38 => 'L',
-            44 => 'Z',
-            45 => 'X',
-            46 => 'C',
-            47 => 'V',
-            48 => 'B',
-            49 => 'N',
-            50 => 'M',
-            _ => return None,
-        }
-    } else {
-        match kc {
-            // Digits
-            2 => '1',
-            3 => '2',
-            4 => '3',
-            5 => '4',
-            6 => '5',
-            7 => '6',
-            8 => '7',
-            9 => '8',
-            10 => '9',
-            11 => '0',
-            // Punctuation
-            12 => '-',
-            13 => '=',
-            26 => '[',
-            27 => ']',
-            43 => '\\',
-            39 => ';',
-            40 => '\'',
-            51 => ',',
-            52 => '.',
-            53 => '/',
-            41 => '`',
-            // Letters
-            16 => 'q',
-            17 => 'w',
-            18 => 'e',
-            19 => 'r',
-            20 => 't',
-            21 => 'y',
-            22 => 'u',
-            23 => 'i',
-            24 => 'o',
-            25 => 'p',
-            30 => 'a',
-            31 => 's',
-            32 => 'd',
-            33 => 'f',
-            34 => 'g',
-            35 => 'h',
-            36 => 'j',
-            37 => 'k',
-            38 => 'l',
-            44 => 'z',
-            45 => 'x',
-            46 => 'c',
-            47 => 'v',
-            48 => 'b',
-            49 => 'n',
-            50 => 'm',
-            _ => return None,
-        }
-    };
+    // add 8 to convert evdev to XKB numbering.
+    let state = xkb_state?;
+    let utf32 = state.key_get_utf32(xkb::Keycode::new(kc + 8));
+    let ch = char::from_u32(utf32)?;
+    if ch.is_control() {
+        return None;
+    }
     Some(Key::Char(ch))
 }
