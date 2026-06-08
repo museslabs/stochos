@@ -8,6 +8,7 @@ use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 use x11rb::CURRENT_TIME;
+use xkbcommon::xkb;
 
 use super::{Backend, KeyEvent};
 use crate::config::{config, Key};
@@ -29,7 +30,7 @@ pub struct X11Backend {
     screen_h: u32,
     depth: u8,
     mapped: bool,
-    shift_held: bool,
+    xkb_state: Option<xkb::State>,
     /// Screenshot of the desktop captured before mapping the overlay.
     /// Used to alpha-blend the overlay on top (X11 has no compositor).
     background: Vec<u8>,
@@ -97,6 +98,8 @@ impl X11Backend {
         // we first try (e.g. from the shortcut key-release event).
         grab_keyboard_with_retry(&conn, window).context("grab keyboard")?;
 
+        let xkb_state = load_xkb_state(&conn, root);
+
         Ok(X11Backend {
             conn,
             window,
@@ -106,7 +109,7 @@ impl X11Backend {
             screen_h,
             depth,
             mapped: true,
-            shift_held: false,
+            xkb_state,
             background,
         })
     }
@@ -338,16 +341,14 @@ impl Backend for X11Backend {
             let event = self.conn.wait_for_event().context("wait for event")?;
             match event {
                 Event::KeyPress(ev) => {
-                    let keycode = ev.detail;
-                    // Shift keys (left=50, right=62 in X11 keycodes)
-                    if keycode == 50 || keycode == 62 {
-                        self.shift_held = true;
-                        continue;
+                    let xkb_kc = xkb::Keycode::new(ev.detail as u32);
+                    // X11 keycodes are evdev + 8.
+                    let evdev_kc = (ev.detail as u32).wrapping_sub(8);
+                    if let Some(state) = self.xkb_state.as_mut() {
+                        state.update_key(xkb_kc, xkb::KeyDirection::Down);
                     }
-                    // X11 keycodes are evdev + 8
-                    let evdev_kc = (keycode as u32).wrapping_sub(8);
                     if let Some(key_event) =
-                        keycode_to_key(evdev_kc, self.shift_held).and_then(|k| {
+                        keycode_to_key(evdev_kc, self.xkb_state.as_ref()).and_then(|k| {
                             config().keys.to_event(k).or(match k {
                                 Key::Char(c) => Some(KeyEvent::Char(c)),
                                 _ => None,
@@ -358,9 +359,8 @@ impl Backend for X11Backend {
                     }
                 }
                 Event::KeyRelease(ev) => {
-                    let keycode = ev.detail;
-                    if keycode == 50 || keycode == 62 {
-                        self.shift_held = false;
+                    if let Some(state) = self.xkb_state.as_mut() {
+                        state.update_key(xkb::Keycode::new(ev.detail as u32), xkb::KeyDirection::Up);
                     }
                 }
                 _ => {}
@@ -462,9 +462,12 @@ fn capture_root(conn: &RustConnection, root: Window, w: u32, h: u32) -> Result<V
     Ok(reply.data)
 }
 
-/// Reuse the same evdev keycode → Key mapping as the Wayland backend.
-/// X11 keycodes are evdev + 8, so callers subtract 8 before calling this.
-fn keycode_to_key(kc: u32, shift_held: bool) -> Option<Key> {
+/// Maps an evdev keycode to a platform-agnostic Key.
+///
+/// Special (non-character) evdev keycodes are layout-invariant, so the table
+/// stays. Character keys go through xkb_state so they respect the user's
+/// active layout (AZERTY, Colemak, Dvorak, …) and modifier state.
+fn keycode_to_key(kc: u32, xkb_state: Option<&xkb::State>) -> Option<Key> {
     match kc {
         1 => return Some(Key::Escape),
         14 => return Some(Key::Backspace),
@@ -525,108 +528,53 @@ fn keycode_to_key(kc: u32, shift_held: bool) -> Option<Key> {
         _ => {}
     }
 
-    let ch = if shift_held {
-        match kc {
-            2 => '!',
-            3 => '@',
-            4 => '#',
-            5 => '$',
-            6 => '%',
-            7 => '^',
-            8 => '&',
-            9 => '*',
-            10 => '(',
-            11 => ')',
-            12 => '_',
-            13 => '+',
-            26 => '{',
-            27 => '}',
-            43 => '|',
-            39 => ':',
-            40 => '"',
-            51 => '<',
-            52 => '>',
-            53 => '?',
-            41 => '~',
-            16 => 'Q',
-            17 => 'W',
-            18 => 'E',
-            19 => 'R',
-            20 => 'T',
-            21 => 'Y',
-            22 => 'U',
-            23 => 'I',
-            24 => 'O',
-            25 => 'P',
-            30 => 'A',
-            31 => 'S',
-            32 => 'D',
-            33 => 'F',
-            34 => 'G',
-            35 => 'H',
-            36 => 'J',
-            37 => 'K',
-            38 => 'L',
-            44 => 'Z',
-            45 => 'X',
-            46 => 'C',
-            47 => 'V',
-            48 => 'B',
-            49 => 'N',
-            50 => 'M',
-            _ => return None,
-        }
-    } else {
-        match kc {
-            2 => '1',
-            3 => '2',
-            4 => '3',
-            5 => '4',
-            6 => '5',
-            7 => '6',
-            8 => '7',
-            9 => '8',
-            10 => '9',
-            11 => '0',
-            12 => '-',
-            13 => '=',
-            26 => '[',
-            27 => ']',
-            43 => '\\',
-            39 => ';',
-            40 => '\'',
-            51 => ',',
-            52 => '.',
-            53 => '/',
-            41 => '`',
-            16 => 'q',
-            17 => 'w',
-            18 => 'e',
-            19 => 'r',
-            20 => 't',
-            21 => 'y',
-            22 => 'u',
-            23 => 'i',
-            24 => 'o',
-            25 => 'p',
-            30 => 'a',
-            31 => 's',
-            32 => 'd',
-            33 => 'f',
-            34 => 'g',
-            35 => 'h',
-            36 => 'j',
-            37 => 'k',
-            38 => 'l',
-            44 => 'z',
-            45 => 'x',
-            46 => 'c',
-            47 => 'v',
-            48 => 'b',
-            49 => 'n',
-            50 => 'm',
-            _ => return None,
-        }
-    };
+    let state = xkb_state?;
+    let utf32 = state.key_get_utf32(xkb::Keycode::new(kc + 8));
+    let ch = char::from_u32(utf32)?;
+    if ch.is_control() {
+        return None;
+    }
     Some(Key::Char(ch))
+}
+
+/// Build an xkb_state seeded with the user's current X11 layout, by reading
+/// the `_XKB_RULES_NAMES` property the X server publishes on the root window.
+/// Returns None on any failure — callers fall back to layout-invariant keys
+/// only (character keys won't resolve).
+fn load_xkb_state(conn: &RustConnection, root: Window) -> Option<xkb::State> {
+    let names_atom = conn
+        .intern_atom(false, b"_XKB_RULES_NAMES")
+        .ok()?
+        .reply()
+        .ok()?
+        .atom;
+    let reply = conn
+        .get_property(false, root, names_atom, AtomEnum::STRING, 0, 1024)
+        .ok()?
+        .reply()
+        .ok()?;
+
+    // The property is a sequence of NUL-terminated strings:
+    // rules\0model\0layout\0variant\0options\0.
+    let mut parts = reply
+        .value
+        .split(|b| *b == 0)
+        .filter_map(|s| std::str::from_utf8(s).ok());
+    let rules = parts.next().unwrap_or("");
+    let model = parts.next().unwrap_or("");
+    let layout = parts.next().unwrap_or("");
+    let variant = parts.next().unwrap_or("");
+    let options = parts.next().unwrap_or("");
+
+    let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+    let keymap = xkb::Keymap::new_from_names(
+        &context,
+        rules,
+        model,
+        layout,
+        variant,
+        Some(options.to_string()),
+        xkb::KEYMAP_COMPILE_NO_FLAGS,
+    )?;
+    Some(xkb::State::new(&keymap))
 }

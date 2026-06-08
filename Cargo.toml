@@ -13,8 +13,8 @@ exclude = ["example.gif", "target/*", "nix/*", "flake.*", "shell.nix", "install.
 
 [features]
 default = ["wayland", "x11"]
-wayland = ["dep:wayland-client", "dep:wayland-protocols-wlr", "dep:tempfile"]
-x11 = ["dep:x11rb"]
+wayland = ["dep:wayland-client", "dep:wayland-protocols-wlr", "dep:tempfile", "dep:xkbcommon"]
+x11 = ["dep:x11rb", "dep:xkbcommon"]
 
 [dependencies]
 anyhow = "1.0"
@@ -30,6 +30,7 @@ wayland-client = { version = "0.31", optional = true }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = true }
 tempfile = { version = "3", optional = true }
 x11rb = { version = "0.13", features = ["xtest"], optional = true }
+xkbcommon = { version = "0.8", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
