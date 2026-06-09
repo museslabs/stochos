@@ -825,13 +825,13 @@ pub(super) fn keycode_to_key(kc: u32, xkb_state: Option<&xkb::State>) -> Option<
 
         // Navigation
         102 => return Some(Key::Home),
-        103 => return Some(Key::End),
-        104 => return Some(Key::Up),
+        103 => return Some(Key::Up),
+        104 => return Some(Key::PageUp),
         105 => return Some(Key::Left),
         106 => return Some(Key::Right),
-        107 => return Some(Key::PageUp),
-        108 => return Some(Key::PageDown),
-        109 => return Some(Key::Down),
+        107 => return Some(Key::End),
+        108 => return Some(Key::Down),
+        109 => return Some(Key::PageDown),
         110 => return Some(Key::Insert),
         111 => return Some(Key::Delete),
         // Function keys
