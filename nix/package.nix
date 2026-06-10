@@ -4,6 +4,7 @@
   stdenv,
   wayland,
   libx11,
+  libxkbcommon,
   ...
 }: let
   unfilteredRoot = ../.;
@@ -11,6 +12,7 @@
   libs = [
     wayland
     libx11
+    libxkbcommon
   ];
   libsPath = lib.makeLibraryPath libs;
 
