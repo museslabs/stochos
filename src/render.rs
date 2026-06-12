@@ -137,6 +137,15 @@ pub fn render_grid(buf: &mut [u8], w: u32, h: u32, input: &InputState, dragging:
             let lx = x + cell_w.saturating_sub(label_w) / 2;
             let ly = y + cell_h.saturating_sub(char_h) / 2;
             c.draw_glyph(lx, ly, first_hint, c1, scale);
+            let border = if dragging {
+                colors.border_dragging
+            } else {
+                colors.border
+            };
+            c.fill_rect(x, y, cell_w, 1, border);
+            c.fill_rect(x, y + cell_h - 1, cell_w, 1, border);
+            c.fill_rect(x, y, 1, cell_h, border);
+            c.fill_rect(x + cell_w - 1, y, 1, cell_h, border);
             c.draw_glyph(lx + char_w + gap, ly, second_hint, c2, scale);
         }
     }
