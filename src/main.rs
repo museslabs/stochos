@@ -2,6 +2,7 @@ mod app;
 mod backend;
 mod cli;
 mod config;
+mod hint;
 mod input;
 mod macro_store;
 mod mode;

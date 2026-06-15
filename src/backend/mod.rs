@@ -5,6 +5,7 @@ use anyhow::Result;
 pub enum KeyEvent {
     Normal,
     Bisect,
+    Hint,
     FreeMode,
     Char(char),
     Click,
@@ -22,10 +23,21 @@ pub enum KeyEvent {
     ScrollRight,
 }
 
+/// A captured desktop frame. Pixels are tightly packed BGRA (byte order
+/// B, G, R, A; 8 bits per channel), matching the buffer layout `render.rs`
+/// produces. `w`/`h` are in capture (physical) pixels, which may exceed the
+/// overlay's logical size on scaled outputs — callers must rescale.
+pub struct Capture {
+    pub bgra: Vec<u8>,
+    pub w: u32,
+    pub h: u32,
+}
+
 /// Platform backend — one implementation per OS/display-server.
 ///
-/// `render.rs` produces a raw ARGB pixel buffer that every backend receives
-/// unchanged via `present()`. All other methods are input/pointer control.
+/// `render.rs` produces a raw ARGB8888 pixel buffer (BGRA byte order, the same
+/// layout as [`Capture`]) that every backend receives unchanged via
+/// `present()`. All other methods are input/pointer control.
 pub trait Backend {
     /// Screen dimensions in pixels.
     fn screen_size(&self) -> (u32, u32);
@@ -35,6 +47,11 @@ pub trait Backend {
 
     /// Query the current mouse pointer position.
     fn mouse_pos(&mut self) -> Result<(u32, u32)>;
+
+    /// Capture the current desktop as a BGRA pixel buffer (see [`Capture`]).
+    fn capture_screen(&mut self) -> Result<Capture> {
+        anyhow::bail!("screen capture is not implemented for this backend")
+    }
 
     /// Move the mouse pointer to an absolute position.
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()>;

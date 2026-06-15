@@ -210,6 +210,7 @@ impl Default for GridConfig {
 pub struct KeyBindings {
     pub normal: Key,
     pub bisect: Key,
+    pub hint: Key,
     pub free_mode: Key,
     pub click: Key,
     pub double_click: Key,
@@ -231,6 +232,7 @@ impl Default for KeyBindings {
         Self {
             normal: Key::Char('n'),
             bisect: Key::Char('b'),
+            hint: Key::Char('c'),
             free_mode: Key::Char('v'),
             click: Key::Space,
             double_click: Key::Enter,
@@ -258,6 +260,9 @@ impl KeyBindings {
         }
         if key == self.bisect {
             return Some(KeyEvent::Bisect);
+        }
+        if key == self.hint {
+            return Some(KeyEvent::Hint);
         }
         if key == self.free_mode {
             return Some(KeyEvent::FreeMode);
@@ -348,6 +353,15 @@ pub struct Colors {
 
     #[serde(with = "from_hex")]
     pub crosshair: [u8; 4],
+
+    #[serde(with = "from_hex")]
+    pub hint_chip_bg: [u8; 4],
+    #[serde(with = "from_hex")]
+    pub hint_text: [u8; 4],
+    #[serde(with = "from_hex")]
+    pub hint_text_typed: [u8; 4],
+    #[serde(with = "from_hex")]
+    pub hint_dim: [u8; 4],
 }
 mod from_hex {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -402,6 +416,10 @@ impl Default for Colors {
             border: [0x00, 0xA5, 0xFF, 0xFF],          //amber
             border_dragging: [0xFF, 0x00, 0xFF, 0xFF], //magenta
             crosshair: [0x00, 0xA5, 0xFF, 0xFF],       //amber
+            hint_chip_bg: [0x2E, 0x1E, 0x1E, 0xEE],
+            hint_text: [0x00, 0xCC, 0xFF, 0xFF],
+            hint_text_typed: [0x50, 0xFF, 0x50, 0xFF],
+            hint_dim: [0x66, 0x66, 0x66, 0x88],
         }
     }
 }
@@ -475,6 +493,54 @@ impl Default for FreeConfig {
     }
 }
 
+/// Which element-detection backend hint mode uses. `Auto` (the default) tries
+/// the semantic AT-SPI detector and falls back to pure CV when AT-SPI is
+/// unavailable or sees almost nothing; on platforms without AT-SPI it uses
+/// CV, while selecting `Atspi` explicitly reports an error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HintDetectorKind {
+    #[default]
+    Auto,
+    Cv,
+    Atspi,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HintConfig {
+    /// Which detector to use: "auto" (default), "cv", or "atspi".
+    pub detector: HintDetectorKind,
+    pub alphabet: Vec<char>,
+    pub max_label_len: usize,
+    pub auto_click: bool,
+    /// Longest screen-capture side fed to the CV detector; the result is
+    /// scaled back to screen coordinates. 0 disables downscaling. Bounds both
+    /// runtime and the absolute size of filtered features.
+    pub downscale_longest: u32,
+    /// Canny edge thresholds for the CV detector. Raise them for fewer, more
+    /// confident hints on noisy screens; lower them to catch faint controls.
+    pub edge_low_threshold: u32,
+    pub edge_high_threshold: u32,
+}
+
+impl Default for HintConfig {
+    fn default() -> Self {
+        Self {
+            detector: HintDetectorKind::default(),
+            alphabet: vec![
+                'a', 's', 'd', 'f', 'j', 'k', 'l', ';', 'g', 'h', 'q', 'w', 'e', 'r', 't', 'y',
+                'u', 'i', 'o', 'p',
+            ],
+            max_label_len: 3,
+            auto_click: false,
+            downscale_longest: 1280,
+            edge_low_threshold: 50,
+            edge_high_threshold: 150,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -484,7 +550,9 @@ pub struct Config {
     pub colors: Colors,
     pub macros: MacrosConfig,
     pub free: FreeConfig,
+    pub hint: HintConfig,
     pub font_size: u32,
+    pub hint_font_size: Option<u32>,
     pub sub_hint_font_size: Option<u32>,
     pub panel_font_size: Option<u32>,
 }
@@ -498,7 +566,9 @@ impl Default for Config {
             colors: Colors::default(),
             macros: MacrosConfig::default(),
             free: FreeConfig::default(),
+            hint: HintConfig::default(),
             font_size: 2,
+            hint_font_size: None,
             sub_hint_font_size: None,
             panel_font_size: None,
         }
@@ -532,6 +602,10 @@ impl Config {
         clamp_scale(self.font_size)
     }
 
+    pub fn hint_font_size(&self) -> u32 {
+        self.hint_font_size.map_or(1, clamp_scale)
+    }
+
     pub fn sub_hint_font_size(&self) -> u32 {
         self.sub_hint_font_size
             .map_or_else(|| self.font_size(), clamp_scale)
@@ -553,6 +627,10 @@ impl Config {
 
     pub fn hints(&self) -> &[char] {
         &self.grid.hints
+    }
+
+    pub fn hint_alphabet(&self) -> &[char] {
+        &self.hint.alphabet
     }
 
     pub fn cols(&self) -> u32 {

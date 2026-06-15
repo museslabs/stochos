@@ -1,5 +1,6 @@
 use crate::backend::Backend;
 use crate::config::config;
+use crate::hint::build_hint_mode;
 use crate::input::InputState;
 use crate::macro_store::MacroStore;
 use crate::mode::{Mode, ModeTransition};
@@ -8,6 +9,7 @@ use crate::mode::{Mode, ModeTransition};
 pub enum InitialMode {
     Normal,
     Bisect,
+    Hint,
     Free,
     FreeCenter,
 }
@@ -26,6 +28,11 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
         InitialMode::Bisect => Mode::Bisect {
             region: (0, 0, w, h),
         },
+        InitialMode::Hint => Mode::Hint {
+            elements: build_hint_mode(backend, w, h)?.into(),
+            typed: Vec::new(),
+            target: None,
+        },
         InitialMode::Free => {
             let (x, y) = backend.mouse_pos()?;
             Mode::Free {
@@ -41,7 +48,10 @@ pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<
         },
     };
 
-    if !matches!(initial, InitialMode::Free | InitialMode::FreeCenter) {
+    if !matches!(
+        initial,
+        InitialMode::Free | InitialMode::FreeCenter | InitialMode::Hint
+    ) {
         backend.move_mouse(w / 2, h / 2)?;
     }
 

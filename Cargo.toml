@@ -20,6 +20,8 @@ x11 = ["dep:x11rb", "dep:xkbcommon"]
 anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
 font8x8 = "0.3"
+image = { version = "0.25", default-features = false }
+imageproc = { version = "0.26", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "1.1"
@@ -31,6 +33,9 @@ wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = tru
 tempfile = { version = "3", optional = true }
 x11rb = { version = "0.13", features = ["xkb", "xtest"], optional = true }
 xkbcommon = { version = "0.8", optional = true }
+atspi = { version = "0.30", features = ["connection", "proxies", "zbus"] }
+futures-executor = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

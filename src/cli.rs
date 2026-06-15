@@ -17,6 +17,10 @@ pub struct Args {
     #[arg(long, group = "mode")]
     pub free_center: bool,
 
+    /// Start in hint mode (clickable-element labels)
+    #[arg(long, group = "mode")]
+    pub hint: bool,
+
     /// Allow multiple concurrent instances
     #[arg(long)]
     pub allow_multiple: bool,
@@ -39,6 +43,10 @@ impl Args {
 
         if self.free_center {
             return InitialMode::FreeCenter;
+        }
+
+        if self.hint {
+            return InitialMode::Hint;
         }
 
         InitialMode::Normal

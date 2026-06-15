@@ -53,6 +53,7 @@ pub(super) fn handle_key<B: Backend>(
             backend.scroll_right()?;
             Ok(ModeTransition::Redraw)
         }
+        KeyEvent::Hint => Ok(super::hint::enter(backend, width, height)),
         KeyEvent::Char(ch) => handle_char(width, height, *ch, backend, x, y, speed),
         _ => Ok(ModeTransition::Stay),
     }

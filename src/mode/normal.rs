@@ -113,9 +113,7 @@ pub(super) fn handle_key<B: Backend>(
             let (x, y) = if let Some((x, y)) = target {
                 (x, y)
             } else {
-                let (x, y) = (width / 2, height / 2);
-                backend.move_mouse(x, y)?;
-                (x, y)
+                backend.mouse_pos()?
             };
 
             Ok(ModeTransition::Enter(Mode::Free {
@@ -123,6 +121,23 @@ pub(super) fn handle_key<B: Backend>(
                 y,
                 speed: config().free.base_speed.max(1),
             }))
+        }
+        KeyEvent::Hint => {
+            let cfg = config();
+            if collides_with_hint(cfg.keys.hint, input_state, cfg.hints(), cfg.sub_hints()) {
+                if let Key::Char(ch) = cfg.keys.hint {
+                    return handle_key(
+                        width,
+                        height,
+                        &KeyEvent::Char(ch),
+                        backend,
+                        input_state,
+                        target,
+                        drag_origin,
+                    );
+                }
+            }
+            Ok(super::hint::enter(backend, width, height))
         }
         KeyEvent::Char(ch)
             if config().hints().contains(ch)
