@@ -76,12 +76,15 @@ const K_CGEVENT_RIGHT_MOUSE_DOWN: u32 = 3;
 const K_CGEVENT_RIGHT_MOUSE_UP: u32 = 4;
 const K_CGEVENT_MOUSE_MOVED: u32 = 5;
 const K_CGEVENT_LEFT_MOUSE_DRAGGED: u32 = 6;
+const K_CGEVENT_OTHER_MOUSE_DOWN: u32 = 25;
+const K_CGEVENT_OTHER_MOUSE_UP: u32 = 26;
 const K_CGEVENT_KEY_DOWN: u32 = 10;
 const K_CGEVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFFFFFE;
 const K_CGEVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFFFFFF;
 
 const K_CGMOUSE_BUTTON_LEFT: u32 = 0;
 const K_CGMOUSE_BUTTON_RIGHT: u32 = 1;
+const K_CGMOUSE_BUTTON_CENTER: u32 = 2;
 
 const K_CGHIDEVENT_TAP: u32 = 0;
 const K_CGANNOTATED_SESSION_EVENT_TAP: u32 = 2;
@@ -687,7 +690,16 @@ impl Backend for MacosBackend {
     }
 
     fn middle_click(&mut self, x: u32, y: u32) -> Result<()> {
-        unimplemented!();
+        self.hide_overlay();
+        self.focus_target_app();
+        self.click_at(
+            K_CGEVENT_OTHER_MOUSE_DOWN,
+            K_CGEVENT_OTHER_MOUSE_UP,
+            K_CGMOUSE_BUTTON_CENTER,
+            x,
+            y,
+            1,
+        );
         Ok(())
     }
 
