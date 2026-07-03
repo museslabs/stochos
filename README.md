@@ -86,7 +86,7 @@ Released binaries are not codesigned with a Developer ID, so after every upgrade
 | Enter | Double click |
 | `m`   | Triple click |
 | Delete | Right click |
-| Insert | Middle click (macOS is not supported) |
+| Insert | Middle click |
 | Escape | Close overlay |
 | Backspace | Undo last step |
 | Arrow keys | Scroll (up/down/left/right) |
