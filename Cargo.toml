@@ -40,4 +40,7 @@ futures-util = { version = "0.3", default-features = false, features = ["alloc"]
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSDate", "NSGeometry", "NSString", "NSValue"] }
-objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSColor", "NSEvent", "NSPanel", "NSResponder", "NSScreen", "NSView", "NSWindow"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSColor", "NSEvent", "NSPanel", "NSResponder", "NSRunningApplication", "NSScreen", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-application-services = { version = "0.3", default-features = false, features = ["std", "libc", "AXUIElement", "AXValue", "AXAttributeConstants", "AXRoleConstants", "AXError", "HIServices"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGDirectDisplay", "CGImage", "CGDataProvider", "CGError"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFString", "CFArray", "CFData", "CFBase", "CFCGTypes", "CFNumber"] }

@@ -9,6 +9,8 @@
 
 #[cfg(target_os = "linux")]
 mod atspi;
+#[cfg(target_os = "macos")]
+mod ax;
 #[cfg(target_os = "linux")]
 mod compositor;
 mod cv;

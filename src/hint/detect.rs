@@ -22,7 +22,6 @@ pub struct DetectorOutput {
     pub capture_h: u32,
     /// The window the candidates are scoped to (screen coordinates), when the
     /// detector knows it; lets `auto` keep CV supplements in the active window.
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub focus_rect: Option<(u32, u32, u32, u32)>,
 }
 
@@ -55,7 +54,6 @@ fn atspi_detector() -> anyhow::Result<Box<dyn HintDetector>> {
 
 /// Fewest AT-SPI targets the cascade accepts without falling back to CV;
 /// fewer means the accessibility tree is absent or a stub.
-#[cfg(target_os = "linux")]
 const CASCADE_MIN_ATSPI_TARGETS: usize = 5;
 
 /// The default detector: prefer semantic AT-SPI targets, but supplement them
@@ -69,22 +67,88 @@ impl HintDetector for AutoDetector {
 
     fn detect(&self, backend: &mut dyn Backend) -> anyhow::Result<DetectorOutput> {
         #[cfg(target_os = "linux")]
-        match super::atspi::AtspiHintDetector.detect(backend) {
-            Ok(output) if output.candidates.len() >= CASCADE_MIN_ATSPI_TARGETS => {
-                return Ok(supplement_with_cv(backend, output));
+        {
+            match super::atspi::AtspiHintDetector.detect(backend) {
+                Ok(output) if output.candidates.len() >= CASCADE_MIN_ATSPI_TARGETS => {
+                    return Ok(supplement_with_cv(backend, output));
+                }
+                Ok(output) => eprintln!(
+                    "hint: atspi found only {} targets, falling back to cv",
+                    output.candidates.len()
+                ),
+                Err(e) => eprintln!("hint: atspi detection failed, falling back to cv: {e:#}"),
             }
-            Ok(output) => eprintln!(
-                "hint: atspi found only {} targets, falling back to cv",
-                output.candidates.len()
-            ),
-            Err(e) => eprintln!("hint: atspi detection failed, falling back to cv: {e:#}"),
+            super::cv::CvHintDetector.detect(backend)
         }
-        super::cv::CvHintDetector.detect(backend)
+
+        // On macOS the AX tree is often thin (Electron/Firefox), so when the
+        // semantic pass is too sparse to use directly we still keep its focus
+        // rect to scope the CV fallback to the active window rather than
+        // painting hints across the whole desktop.
+        #[cfg(target_os = "macos")]
+        {
+            let mut fallback_focus: Option<(u32, u32, u32, u32)> = None;
+            match super::ax::AxHintDetector.detect(backend) {
+                Ok(output) if output.candidates.len() >= CASCADE_MIN_ATSPI_TARGETS => {
+                    return Ok(supplement_with_cv(backend, output));
+                }
+                Ok(output) => {
+                    eprintln!(
+                        "hint: ax found only {} targets, falling back to cv",
+                        output.candidates.len()
+                    );
+                    fallback_focus = output.focus_rect;
+                }
+                Err(e) => eprintln!("hint: ax detection failed, falling back to cv: {e:#}"),
+            }
+            let cv_output = super::cv::CvHintDetector.detect(backend)?;
+            Ok(scope_cv_output(
+                cv_output,
+                fallback_focus,
+                backend.screen_size(),
+            ))
+        }
+    }
+}
+
+/// Clip a pure-CV pass to the active-window rect that the semantic detector
+/// did expose, even when its candidate list was too sparse to use directly.
+/// Capture coordinates are physical pixels; focus rects are screen-logical, so
+/// we filter in logical space after the shared remap.
+#[cfg(target_os = "macos")]
+fn scope_cv_output(
+    output: DetectorOutput,
+    focus_rect: Option<(u32, u32, u32, u32)>,
+    screen: (u32, u32),
+) -> DetectorOutput {
+    let Some(rect) = focus_rect else {
+        return output;
+    };
+    let (screen_w, screen_h) = screen;
+    let logical = super::remap_to_screen(
+        output.candidates,
+        output.capture_w,
+        output.capture_h,
+        screen_w,
+        screen_h,
+    );
+    let kept: Vec<HintCandidate> = logical
+        .into_iter()
+        .filter(|c| {
+            let cx = c.bbox.0 + c.bbox.2 / 2;
+            let cy = c.bbox.1 + c.bbox.3 / 2;
+            cx >= rect.0 && cx < rect.0 + rect.2 && cy >= rect.1 && cy < rect.1 + rect.3
+        })
+        .collect();
+    DetectorOutput {
+        candidates: kept,
+        capture_w: screen_w,
+        capture_h: screen_h,
+        focus_rect: Some(rect),
     }
 }
 
 /// Add visual candidates that are not already covered by a precise semantic box.
-#[cfg(target_os = "linux")]
 fn supplement_with_cv(backend: &mut dyn Backend, mut semantic: DetectorOutput) -> DetectorOutput {
     let Some(window) = semantic.focus_rect else {
         return semantic;
@@ -119,7 +183,6 @@ fn supplement_with_cv(backend: &mut dyn Backend, mut semantic: DetectorOutput) -
     semantic
 }
 
-#[cfg(target_os = "linux")]
 fn merge_visual_supplements(
     semantic: &mut Vec<HintCandidate>,
     visual: Vec<HintCandidate>,
@@ -176,17 +239,14 @@ fn merge_visual_supplements(
     semantic.extend(replacements);
 }
 
-#[cfg(target_os = "linux")]
 fn contains_point((x, y, w, h): (u32, u32, u32, u32), (px, py): (u32, u32)) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
 }
 
-#[cfg(target_os = "linux")]
 fn center((x, y, w, h): (u32, u32, u32, u32)) -> (u32, u32) {
     (x + w / 2, y + h / 2)
 }
 
-#[cfg(target_os = "linux")]
 fn precise_semantic_box_covers(
     semantic: (u32, u32, u32, u32),
     visual: (u32, u32, u32, u32),
@@ -194,7 +254,6 @@ fn precise_semantic_box_covers(
     contains_point(semantic, center(visual)) && !is_broad_horizontal_container(semantic, visual)
 }
 
-#[cfg(target_os = "linux")]
 fn broad_semantic_box_contains(
     semantic: (u32, u32, u32, u32),
     visual: (u32, u32, u32, u32),
@@ -202,7 +261,6 @@ fn broad_semantic_box_contains(
     contains_point(semantic, center(visual)) && is_broad_horizontal_container(semantic, visual)
 }
 
-#[cfg(target_os = "linux")]
 fn is_broad_horizontal_container(
     semantic: (u32, u32, u32, u32),
     visual: (u32, u32, u32, u32),
@@ -213,7 +271,6 @@ fn is_broad_horizontal_container(
         && u64::from(semantic_h) <= u64::from(visual_h.max(1)) * 3
 }
 
-#[cfg(target_os = "linux")]
 fn leftmost_anchor_icon(
     semantic: (u32, u32, u32, u32),
     raw_visual: &[HintCandidate],
@@ -227,7 +284,6 @@ fn leftmost_anchor_icon(
         .min_by_key(|&(x, _, _, _)| x)
 }
 
-#[cfg(target_os = "linux")]
 fn is_left_anchor_icon(semantic: (u32, u32, u32, u32), icon: (u32, u32, u32, u32)) -> bool {
     if !broad_semantic_box_contains(semantic, icon) || !is_icon_like(icon) {
         return false;
@@ -236,14 +292,12 @@ fn is_left_anchor_icon(semantic: (u32, u32, u32, u32), icon: (u32, u32, u32, u32
     center(icon).0 <= x + w / 3
 }
 
-#[cfg(target_os = "linux")]
 fn is_icon_like((_, _, w, h): (u32, u32, u32, u32)) -> bool {
     let short = w.min(h).max(1);
     let long = w.max(h);
     long <= 32 && long <= short * 2
 }
 
-#[cfg(target_os = "linux")]
 fn text_target_after_icon(
     semantic: (u32, u32, u32, u32),
     icon: (u32, u32, u32, u32),
@@ -259,7 +313,7 @@ fn text_target_after_icon(
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
