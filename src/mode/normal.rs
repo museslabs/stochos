@@ -281,6 +281,7 @@ pub(super) fn draw<B: Backend>(
 ) -> anyhow::Result<()> {
     draw_grid(pixels, width, height, input_state, dragging, false, backend)
 }
+
 fn collides_with_hint(
     key: Key,
     input_state: &InputState,

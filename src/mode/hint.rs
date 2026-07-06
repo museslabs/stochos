@@ -98,6 +98,19 @@ pub(super) fn handle_key<B: Backend>(
                 target: None,
             }))
         }
+        KeyEvent::FreeMode => {
+            let (x, y) = if let Some((x, y)) = target {
+                (x, y)
+            } else {
+                backend.mouse_pos()?
+            };
+
+            Ok(ModeTransition::Enter(Mode::Free {
+                x,
+                y,
+                speed: config().free.base_speed.max(1),
+            }))
+        }
         _ => Ok(ModeTransition::Stay),
     }
 }
