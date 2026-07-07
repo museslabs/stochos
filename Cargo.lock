@@ -1501,7 +1501,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stochos"
-version = "0.6.2"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "atspi",

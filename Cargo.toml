@@ -1,6 +1,6 @@
 [package]
 name = "stochos"
-version = "0.6.2"
+version = "1.0.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Keyboard-driven mouse control"
