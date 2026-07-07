@@ -1,4 +1,8 @@
-use crate::{config::config, input::InputState};
+use crate::{
+    config::config,
+    hint::{label_starts_with, HintElement},
+    input::InputState,
+};
 use font8x8::UnicodeFonts;
 
 fn line_height(scale: u32) -> u32 {
@@ -272,6 +276,215 @@ pub fn render_free(buf: &mut [u8], w: u32, h: u32, x: u32, y: u32, speed: u32) {
     let panel_w = bytes.len() as u32 * char_width(scale) + pad * 2;
     c.fill_rect(8, 8, panel_w, lh, colors.panel_bg);
     c.draw_text(8 + pad, 12, bytes, colors.text_white, scale);
+}
+
+pub fn render_hints(buf: &mut [u8], w: u32, h: u32, elements: &[HintElement], typed: &[char]) {
+    let cfg = config();
+    let colors = &cfg.colors;
+    let scale = cfg.hint_font_size();
+    let cw = char_width(scale);
+    let chip_h = 8 * scale + 6;
+    let mut c = Canvas { buf, w };
+    c.clear();
+
+    if elements.is_empty() {
+        c.draw_text(
+            8,
+            8,
+            b"no clickable elements found - esc to exit",
+            colors.hint_text,
+            scale,
+        );
+        return;
+    }
+
+    // Place every chip so chips never cover each other's letters. `elements` is
+    // sorted by importance, so the most important targets keep their natural spot
+    // and overlapping neighbours (e.g. a browser tab and its close button) are
+    // nudged to the nearest free position instead of stacking unreadably.
+    let placements = place_chips(elements, w, h, chip_h, cw);
+
+    // Layered draw: dimmed (non-matching) chips first, then the matching ones on
+    // top, so a label you can still type is never hidden under a dimmed
+    // neighbour. Reverse order within each layer keeps important chips on top.
+    for matching in [false, true] {
+        for i in (0..elements.len()).rev() {
+            if label_starts_with(&elements[i].label, typed) != matching {
+                continue;
+            }
+            let (x, y, chip_w) = placements[i];
+            draw_hint_chip(
+                &mut c,
+                colors,
+                scale,
+                cw,
+                chip_h,
+                &elements[i],
+                x,
+                y,
+                chip_w,
+                typed,
+                matching,
+            );
+        }
+    }
+
+    // Crosshair on the fully-typed target, drawn last so it sits above all chips.
+    if !typed.is_empty() {
+        for el in elements {
+            if el.label.chars().eq(typed.iter().copied()) {
+                draw_crosshair(&mut c, colors, el.cx, el.cy);
+            }
+        }
+    }
+}
+
+/// Greedily assign each element a chip rectangle `(x, y, chip_w)` that does not
+/// overlap an already-placed chip, searching positions near the element. Earlier
+/// (more important) elements are placed first and win contested spots.
+fn place_chips(
+    elements: &[HintElement],
+    w: u32,
+    h: u32,
+    chip_h: u32,
+    cw: u32,
+) -> Vec<(u32, u32, u32)> {
+    let mut placed: Vec<(u32, u32, u32, u32)> = Vec::with_capacity(elements.len());
+    let mut out = Vec::with_capacity(elements.len());
+    for el in elements {
+        let chip_w = (el.label.chars().count() as u32 * cw + 8).max(18);
+        let rect = find_free_chip(el.bbox, chip_w, chip_h, w, h, &placed);
+        placed.push(rect);
+        out.push((rect.0, rect.1, chip_w));
+    }
+    out
+}
+
+/// Search positions anchored around an element for one whose chip rect clears all
+/// `placed` rects (plus a small gap). Falls back to the preferred spot, accepting
+/// overlap, when the area is too crowded to find a free slot.
+fn find_free_chip(
+    bbox: (u32, u32, u32, u32),
+    chip_w: u32,
+    chip_h: u32,
+    w: u32,
+    h: u32,
+    placed: &[(u32, u32, u32, u32)],
+) -> (u32, u32, u32, u32) {
+    let (bx, by, bw, bh) = bbox;
+    let clamp_x = |x: i64| x.clamp(0, w.saturating_sub(chip_w) as i64) as u32;
+    let clamp_y = |y: i64| y.clamp(0, h.saturating_sub(chip_h) as i64) as u32;
+    let left = clamp_x(bx as i64);
+    let right = clamp_x(bx as i64 + bw as i64 - chip_w as i64);
+    let on = clamp_y(by as i64 - chip_h as i64 / 2);
+    let above = clamp_y(by as i64 - chip_h as i64);
+    let below = clamp_y(by as i64 + bh as i64);
+
+    let mut candidates: Vec<(u32, u32)> = vec![
+        (left, on),
+        (left, above),
+        (right, above),
+        (right, on),
+        (left, below),
+        (right, below),
+    ];
+    // Then fan out vertically, then horizontally, staying near the element.
+    for k in 1..=12i64 {
+        let dy = k * (chip_h as i64 + 2);
+        candidates.push((left, clamp_y(by as i64 - chip_h as i64 / 2 + dy)));
+        candidates.push((left, clamp_y(by as i64 - chip_h as i64 / 2 - dy)));
+    }
+    for k in 1..=12i64 {
+        let dx = k * (chip_w as i64 + 2);
+        candidates.push((clamp_x(bx as i64 + dx), on));
+        candidates.push((clamp_x(bx as i64 - dx), on));
+    }
+
+    for (x, y) in candidates {
+        let rect = (x, y, chip_w, chip_h);
+        if !placed.iter().any(|p| rects_overlap(*p, rect, 2)) {
+            return rect;
+        }
+    }
+    (left, on, chip_w, chip_h)
+}
+
+/// Axis-aligned overlap test with a `gap` margin so chips keep a little air
+/// between them rather than sitting flush.
+fn rects_overlap(a: (u32, u32, u32, u32), b: (u32, u32, u32, u32), gap: u32) -> bool {
+    let ax1 = a.0.saturating_sub(gap);
+    let ay1 = a.1.saturating_sub(gap);
+    let ax2 = a.0 + a.2 + gap;
+    let ay2 = a.1 + a.3 + gap;
+    ax1 < b.0 + b.2 && b.0 < ax2 && ay1 < b.1 + b.3 && b.1 < ay2
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_hint_chip(
+    c: &mut Canvas<'_>,
+    colors: &crate::config::Colors,
+    scale: u32,
+    cw: u32,
+    chip_h: u32,
+    el: &HintElement,
+    x: u32,
+    y: u32,
+    chip_w: u32,
+    typed: &[char],
+    matching: bool,
+) {
+    let typed_full = matching && !typed.is_empty() && el.label.chars().eq(typed.iter().copied());
+    let text_color = if typed_full {
+        colors.hint_text_typed
+    } else if matching {
+        colors.hint_text
+    } else {
+        colors.hint_dim
+    };
+    let bg = if matching {
+        colors.hint_chip_bg
+    } else {
+        [
+            colors.hint_chip_bg[0],
+            colors.hint_chip_bg[1],
+            colors.hint_chip_bg[2],
+            colors.hint_chip_bg[3] / 3,
+        ]
+    };
+    c.fill_rect(x, y, chip_w, chip_h, bg);
+    // Border only on active chips — keeps dimmed neighbours visually quiet.
+    if matching && chip_w > 2 && chip_h > 2 {
+        c.fill_rect(x, y, chip_w, 1, colors.border);
+        c.fill_rect(x, y + chip_h - 1, chip_w, 1, colors.border);
+        c.fill_rect(x, y, 1, chip_h, colors.border);
+        c.fill_rect(x + chip_w - 1, y, 1, chip_h, colors.border);
+    }
+    for (idx, ch) in el.label.chars().enumerate() {
+        let color = if matching && idx < typed.len() {
+            colors.hint_text_typed
+        } else {
+            text_color
+        };
+        c.draw_glyph(x + 4 + idx as u32 * cw, y + 3, ch, color, scale);
+    }
+}
+
+fn draw_crosshair(c: &mut Canvas<'_>, colors: &crate::config::Colors, cx: u32, cy: u32) {
+    let arm = 8;
+    c.fill_rect(
+        cx.saturating_sub(arm),
+        cy,
+        arm * 2 + 1,
+        1,
+        colors.hint_text_typed,
+    );
+    c.fill_rect(
+        cx,
+        cy.saturating_sub(arm),
+        1,
+        arm * 2 + 1,
+        colors.hint_text_typed,
+    );
 }
 
 pub fn render_macro_bind_key(buf: &mut [u8], w: u32, h: u32) {
@@ -578,6 +791,40 @@ fn render_sub_grid(
                 bg,
             );
             c.draw_glyph(x + glyph_ox, y + glyph_oy, hint, text, glyph_scale);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn coincident_elements_get_non_overlapping_chips() {
+        // Three targets sharing the same tiny box (e.g. stacked controls). Their
+        // chips must end up at distinct, non-overlapping positions.
+        let el = |label: &str| HintElement {
+            cx: 110,
+            cy: 110,
+            bbox: (100, 100, 20, 20),
+            label: label.to_string(),
+        };
+        let elements = vec![el("a"), el("s"), el("d")];
+        let chip_h = 14;
+        let placements = place_chips(&elements, 1920, 1080, chip_h, 16);
+        let rects: Vec<(u32, u32, u32, u32)> = placements
+            .iter()
+            .map(|&(x, y, cw)| (x, y, cw, chip_h))
+            .collect();
+        for i in 0..rects.len() {
+            for j in (i + 1)..rects.len() {
+                assert!(
+                    !rects_overlap(rects[i], rects[j], 0),
+                    "chips {i} {:?} and {j} {:?} overlap",
+                    rects[i],
+                    rects[j]
+                );
+            }
         }
     }
 }

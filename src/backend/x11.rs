@@ -12,7 +12,7 @@ use x11rb::wrapper::ConnectionExt as _;
 use x11rb::CURRENT_TIME;
 use xkbcommon::xkb;
 
-use super::{Backend, KeyEvent};
+use super::{Backend, Capture, KeyEvent};
 use crate::config::{config, Key};
 
 const BTN_LEFT: u8 = 1;
@@ -228,6 +228,15 @@ impl Backend for X11Backend {
             .reply()
             .context("query_pointer reply")?;
         Ok((reply.root_x as u32, reply.root_y as u32))
+    }
+
+    fn capture_screen(&mut self) -> Result<Capture> {
+        let bgra = capture_root(&self.conn, self.root, self.screen_w, self.screen_h)?;
+        Ok(Capture {
+            bgra,
+            w: self.screen_w,
+            h: self.screen_h,
+        })
     }
 
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()> {

@@ -176,6 +176,18 @@ unsafe extern "C" {
         intent: u32,
     ) -> CGImageRef;
     fn CGImageRelease(img: CGImageRef);
+
+    fn CGBitmapContextCreate(
+        data: *mut c_void,
+        width: usize,
+        height: usize,
+        bits_per_component: usize,
+        bytes_per_row: usize,
+        space: CGColorSpaceRef,
+        bitmap_info: u32,
+    ) -> *mut c_void;
+    fn CGContextDrawImage(c: *mut c_void, rect: CGRect, image: CGImageRef);
+    fn CGContextRelease(c: *mut c_void);
 }
 
 #[link(name = "ApplicationServices", kind = "framework")]
@@ -616,6 +628,74 @@ impl Backend for MacosBackend {
             loc
         };
         Ok((pt.x as u32, pt.y as u32))
+    }
+
+    fn capture_screen(&mut self) -> Result<super::Capture> {
+        use objc2_core_graphics::CGImage;
+
+        let display = objc2_core_graphics::CGMainDisplayID();
+        // CGDisplayCreateImage is marked deprecated in favour of
+        // ScreenCaptureKit, but it still functions on macOS 14/15 and SCK is
+        // async-only.
+        // Revisit when SCK exposes a synchronous shim.
+        #[allow(deprecated)]
+        let image = objc2_core_graphics::CGDisplayCreateImage(display).ok_or_else(|| {
+            anyhow!("CGDisplayCreateImage returned nil (screen recording permission?)")
+        })?;
+        let width = CGImage::width(Some(&image));
+        let height = CGImage::height(Some(&image));
+        if width == 0 || height == 0 {
+            return Err(anyhow!("captured image has zero dimensions"));
+        }
+
+        // Reading bytes straight from `CGImage::data_provider` is unreliable.
+        // On Retina/IOSurface-backed images the buffer may not be in the
+        // declared bitmap format, and the bits CV gets back are effectively
+        // noise. Drawing the image into our own BGRA-premultiplied bitmap
+        // context normalises the format and gives a tight buffer to keep.
+        let row_bytes = width * 4;
+        let mut bgra: Vec<u8> = vec![0; row_bytes * height];
+        let raw_image: *mut c_void = objc2_core_foundation::CFRetained::into_raw(image)
+            .as_ptr()
+            .cast();
+        let ctx = unsafe {
+            let cs = CGColorSpaceCreateDeviceRGB();
+            if cs.is_null() {
+                CGImageRelease(raw_image);
+                return Err(anyhow!("CGColorSpaceCreateDeviceRGB failed"));
+            }
+            let ctx = CGBitmapContextCreate(
+                bgra.as_mut_ptr().cast(),
+                width,
+                height,
+                8,
+                row_bytes,
+                cs,
+                K_CGIMAGE_ALPHA_PREMULTIPLIED_FIRST | K_CGBITMAP_BYTE_ORDER32_LITTLE,
+            );
+            CGColorSpaceRelease(cs);
+            if ctx.is_null() {
+                CGImageRelease(raw_image);
+                return Err(anyhow!("CGBitmapContextCreate failed"));
+            }
+            let rect = CGRect {
+                origin: CGPoint { x: 0.0, y: 0.0 },
+                size: CGSize {
+                    width: width as f64,
+                    height: height as f64,
+                },
+            };
+            CGContextDrawImage(ctx, rect, raw_image);
+            CGImageRelease(raw_image);
+            ctx
+        };
+        unsafe { CGContextRelease(ctx) };
+
+        Ok(super::Capture {
+            bgra,
+            w: width as u32,
+            h: height as u32,
+        })
     }
 
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()> {

@@ -1,5 +1,6 @@
 mod bisect;
 mod free;
+mod hint;
 mod macro_bind_key;
 mod macro_name;
 mod macro_replay;
@@ -81,6 +82,11 @@ pub enum Mode {
         y: u32,
         speed: u32,
     },
+    Hint {
+        elements: std::rc::Rc<[crate::hint::HintElement]>,
+        typed: Vec<char>,
+        target: Option<(u32, u32)>,
+    },
 }
 
 impl Mode {
@@ -127,7 +133,7 @@ impl Mode {
                 *target,
                 *drag_origin,
             ),
-            Mode::Bisect { region } => bisect::handle_key(key, backend, *region),
+            Mode::Bisect { region } => bisect::handle_key(width, height, key, backend, *region),
             Mode::MacroRecording {
                 input_state,
                 target,
@@ -162,6 +168,11 @@ impl Mode {
             Mode::Free { x, y, speed } => {
                 free::handle_key(width, height, key, backend, *x, *y, *speed)
             }
+            Mode::Hint {
+                elements,
+                typed,
+                target,
+            } => hint::handle_key(key, backend, elements, typed, *target),
         }
     }
 
@@ -216,6 +227,9 @@ impl Mode {
             Mode::Free { x, y, speed } => {
                 free::draw(backend, pixels, width, height, *x, *y, *speed)
             }
+            Mode::Hint {
+                elements, typed, ..
+            } => hint::draw(backend, pixels, width, height, elements, typed),
         }
     }
 }

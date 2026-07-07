@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::fd::AsFd;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -17,12 +17,13 @@ use wayland_client::{
 };
 use wayland_protocols_wlr::{
     layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1},
+    screencopy::v1::client::{zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1},
     virtual_pointer::v1::client::{zwlr_virtual_pointer_manager_v1, zwlr_virtual_pointer_v1},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
-use super::{Backend, KeyEvent};
+use super::{Backend, Capture, KeyEvent};
 use crate::config::{config, Key};
 
 const BTN_LEFT: u32 = 0x110;
@@ -62,6 +63,7 @@ impl WaylandBackend {
             shm: None,
             surface: None,
             layer_shell: None,
+            screencopy_manager: None,
             layer_surface: None,
             seat: None,
             vp_manager: None,
@@ -76,6 +78,7 @@ impl WaylandBackend {
             current_output: None,
             held: None,
             pointer_pos: None,
+            screencopy: None,
         };
 
         eq.roundtrip(&mut state).context("initial roundtrip")?;
@@ -180,6 +183,100 @@ impl Backend for WaylandBackend {
             .context("roundtrip in mouse_pos")?;
         let (w, h) = (self.state.screen_w, self.state.screen_h);
         Ok(self.state.pointer_pos.unwrap_or((w / 2, h / 2)))
+    }
+
+    fn capture_screen(&mut self) -> Result<Capture> {
+        self.present_empty()?;
+        let manager = self
+            .state
+            .screencopy_manager
+            .as_ref()
+            .context("zwlr_screencopy_manager_v1 not available")?;
+        let output = self
+            .state
+            .current_output
+            .as_ref()
+            .context("no Wayland output is associated with the overlay")?;
+
+        self.state.screencopy = Some(ScreencopyState::default());
+        let frame = manager.capture_output(0, output, &self.qh, ());
+
+        // Wait until the compositor has advertised its buffer formats. v3 ends
+        // the list with `buffer_done`; v1/v2 send a single `buffer` event with no
+        // terminator, so a non-empty list is also enough to proceed.
+        self.wait_for_screencopy(
+            |capture| capture.done.is_some() || capture.buffer_done || !capture.buffers.is_empty(),
+            "waiting for screencopy buffer parameters",
+        )?;
+
+        let screencopy = self
+            .state
+            .screencopy
+            .as_ref()
+            .context("screencopy state missing")?;
+        if screencopy.buffers.is_empty() {
+            bail!("screencopy failed before sending buffer parameters");
+        }
+        let params = screencopy
+            .buffers
+            .iter()
+            .copied()
+            .find(|params| is_supported_screencopy_format(params.format))
+            .with_context(|| {
+                let offered: Vec<_> = screencopy.buffers.iter().map(|b| b.format).collect();
+                format!("screencopy offered no supported wl_shm format (got {offered:?})")
+            })?;
+        let size = params.stride as usize * params.height as usize;
+        let mut file = tempfile::tempfile().context("create screencopy shm tempfile")?;
+        file.set_len(size as u64)
+            .context("resize screencopy shm tempfile")?;
+
+        let shm = self.state.shm.as_ref().context("wl_shm not available")?;
+        let pool = shm.create_pool(file.as_fd(), size as i32, &self.qh, ());
+        let buffer = pool.create_buffer(
+            0,
+            params.width as i32,
+            params.height as i32,
+            params.stride as i32,
+            params.format,
+            &self.qh,
+            (),
+        );
+        frame.copy(&buffer);
+        self.state
+            .conn
+            .flush()
+            .context("flush screencopy request")?;
+
+        self.wait_for_screencopy(
+            |capture| capture.done.is_some(),
+            "waiting for screencopy frame",
+        )?;
+
+        let capture = self
+            .state
+            .screencopy
+            .take()
+            .context("screencopy finished without state")?;
+        let done = capture
+            .done
+            .context("screencopy finished without a result")?;
+        let capture_flags = capture.flags;
+        frame.destroy();
+        buffer.destroy();
+        pool.destroy();
+        if let ScreencopyDone::Failed = done {
+            bail!("screencopy frame failed");
+        }
+
+        file.seek(SeekFrom::Start(0))
+            .context("rewind screencopy shm file")?;
+        let mut data = vec![0u8; size];
+        file.read_exact(&mut data)
+            .context("read screencopy shm buffer")?;
+        let bgra = convert_screencopy_buffer(&data, params, capture_flags)?;
+        let (w, h) = (params.width, params.height);
+        Ok(Capture { bgra, w, h })
     }
 
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()> {
@@ -422,6 +519,19 @@ impl Backend for WaylandBackend {
 }
 
 impl WaylandBackend {
+    fn wait_for_screencopy(
+        &mut self,
+        ready: impl Fn(&ScreencopyState) -> bool,
+        context: &'static str,
+    ) -> Result<()> {
+        while !self.state.screencopy.as_ref().is_some_and(&ready) {
+            self.eq
+                .blocking_dispatch(&mut self.state)
+                .with_context(|| format!("dispatch wayland events while {context}"))?;
+        }
+        Ok(())
+    }
+
     fn wait_for_events(&mut self) -> Result<()> {
         self.eq.flush().context("flush wayland events")?;
 
@@ -461,6 +571,7 @@ struct WaylandState {
     shm: Option<wl_shm::WlShm>,
     surface: Option<wl_surface::WlSurface>,
     layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
+    screencopy_manager: Option<zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1>,
     layer_surface: Option<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1>,
     seat: Option<wl_seat::WlSeat>,
     vp_manager: Option<zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1>,
@@ -476,7 +587,36 @@ struct WaylandState {
     current_output: Option<wl_output::WlOutput>,
     held: Option<HeldKey>,
     pointer_pos: Option<(u32, u32)>,
+    screencopy: Option<ScreencopyState>,
 }
+
+#[derive(Clone, Copy)]
+struct ScreencopyBufferParams {
+    format: wl_shm::Format,
+    width: u32,
+    height: u32,
+    stride: u32,
+}
+
+#[derive(Clone, Copy)]
+enum ScreencopyDone {
+    Ready,
+    Failed,
+}
+
+#[derive(Default)]
+struct ScreencopyState {
+    /// All `buffer` formats the compositor advertised, in arrival order; we pick
+    /// the first one we can convert.
+    buffers: Vec<ScreencopyBufferParams>,
+    /// Set on the v3 `buffer_done` event that terminates the format list.
+    buffer_done: bool,
+    flags: u32,
+    done: Option<ScreencopyDone>,
+}
+
+/// `zwlr_screencopy_frame_v1` flag bit indicating the buffer is stored bottom-up.
+const SCREENCOPY_Y_INVERT: u32 = 1;
 
 impl WaylandState {
     /// If a key is held, how long until we should fire the next synthesized
@@ -620,6 +760,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
             "zwlr_layer_shell_v1" => {
                 state.layer_shell = Some(registry.bind(name, version.min(4), qh, ()));
             }
+            "zwlr_screencopy_manager_v1" => {
+                state.screencopy_manager = Some(registry.bind(name, version.min(3), qh, ()));
+            }
             "zwlr_virtual_pointer_manager_v1" => {
                 state.vp_manager = Some(registry.bind(name, version.min(2), qh, ()));
             }
@@ -761,6 +904,49 @@ impl Dispatch<wl_surface::WlSurface, ()> for WaylandState {
     }
 }
 
+impl Dispatch<zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _: &zwlr_screencopy_frame_v1::ZwlrScreencopyFrameV1,
+        event: zwlr_screencopy_frame_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let Some(capture) = state.screencopy.as_mut() else {
+            return;
+        };
+        match event {
+            zwlr_screencopy_frame_v1::Event::Buffer {
+                format: WEnum::Value(format),
+                width,
+                height,
+                stride,
+            } => {
+                capture.buffers.push(ScreencopyBufferParams {
+                    format,
+                    width,
+                    height,
+                    stride,
+                });
+            }
+            zwlr_screencopy_frame_v1::Event::BufferDone => {
+                capture.buffer_done = true;
+            }
+            zwlr_screencopy_frame_v1::Event::Flags { flags } => {
+                capture.flags = flags.into();
+            }
+            zwlr_screencopy_frame_v1::Event::Ready { .. } => {
+                capture.done = Some(ScreencopyDone::Ready);
+            }
+            zwlr_screencopy_frame_v1::Event::Failed => {
+                capture.done = Some(ScreencopyDone::Failed);
+            }
+            _ => {}
+        }
+    }
+}
+
 delegate_noop!(WaylandState: ignore wl_compositor::WlCompositor);
 delegate_noop!(WaylandState: ignore wl_region::WlRegion);
 delegate_noop!(WaylandState: ignore wl_output::WlOutput);
@@ -794,6 +980,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandState {
     }
 }
 delegate_noop!(WaylandState: ignore zwlr_layer_shell_v1::ZwlrLayerShellV1);
+delegate_noop!(WaylandState: ignore zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1);
 delegate_noop!(WaylandState: ignore zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1);
 delegate_noop!(WaylandState: ignore zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1);
 
@@ -884,4 +1071,66 @@ pub(super) fn keycode_to_key(kc: u32, xkb_state: Option<&xkb::State>) -> Option<
         return None;
     }
     Some(Key::Char(ch))
+}
+
+fn is_supported_screencopy_format(format: wl_shm::Format) -> bool {
+    matches!(
+        format,
+        wl_shm::Format::Argb8888
+            | wl_shm::Format::Xrgb8888
+            | wl_shm::Format::Abgr8888
+            | wl_shm::Format::Xbgr8888
+    )
+}
+
+fn convert_screencopy_buffer(
+    data: &[u8],
+    params: ScreencopyBufferParams,
+    flags: u32,
+) -> Result<Vec<u8>> {
+    let width = params.width as usize;
+    let height = params.height as usize;
+    let stride = params.stride as usize;
+    let row_bytes = width * 4;
+    if stride < row_bytes || data.len() < stride * height {
+        bail!("screencopy buffer is smaller than declared dimensions");
+    }
+
+    // `swap_rb` selects the BGR-order source formats; `opaque` forces alpha to
+    // 0xFF for the X-variants that carry no real alpha. Decoded once here rather
+    // than re-matched per row.
+    let (swap_rb, opaque) = match params.format {
+        wl_shm::Format::Argb8888 => (false, false),
+        wl_shm::Format::Xrgb8888 => (false, true),
+        wl_shm::Format::Abgr8888 => (true, false),
+        wl_shm::Format::Xbgr8888 => (true, true),
+        other => bail!("unsupported screencopy wl_shm format: {other:?}"),
+    };
+
+    let mut out = vec![0u8; row_bytes * height];
+    for y in 0..height {
+        let dst_y = if flags & SCREENCOPY_Y_INVERT != 0 {
+            height - 1 - y
+        } else {
+            y
+        };
+        let src = &data[y * stride..y * stride + row_bytes];
+        let dst = &mut out[dst_y * row_bytes..(dst_y + 1) * row_bytes];
+        if swap_rb {
+            for (src_px, dst_px) in src.chunks_exact(4).zip(dst.chunks_exact_mut(4)) {
+                dst_px[0] = src_px[2];
+                dst_px[1] = src_px[1];
+                dst_px[2] = src_px[0];
+                dst_px[3] = if opaque { 0xFF } else { src_px[3] };
+            }
+        } else {
+            dst.copy_from_slice(src);
+            if opaque {
+                for px in dst.chunks_exact_mut(4) {
+                    px[3] = 0xFF;
+                }
+            }
+        }
+    }
+    Ok(out)
 }

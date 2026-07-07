@@ -96,6 +96,7 @@ Released binaries are not codesigned with a Developer ID, so after every upgrade
 | Tab | Search macros / quick-save position |
 | `b` | Switch to bisect mode |
 | `n` | Switch back to normal mode (from bisect) |
+| `c` | Switch to hint mode |
 | `v` | Switch to free mode |
 
 All keys are configurable (see Configuration below).
@@ -105,6 +106,7 @@ All keys are configurable (see Configuration below).
 | Flag | Effect |
 |------|--------|
 | `--bisect` | Start the overlay directly in bisect mode |
+| `--hint` | Start the overlay directly in hint mode |
 | `--free` | Start the overlay directly in free mode (cursor starts at current mouse position) |
 | `--free-center` | Start the overlay directly in free mode with the cursor at the center of the screen |
 | `--allow-multiple` | Skip the single-instance lock |
@@ -120,6 +122,27 @@ An alternative grid mode that recursively subdivides. Instead of two-key combos 
 - Backspace pops back up one level
 - Subdivision stops automatically once a cell would fall below `min_cell_size` pixels — the region is highlighted and you can act or back out
 - Press `n` to switch back to normal mode
+
+### Hint mode
+
+An alternative mode that labels likely clickable UI targets directly, instead of asking you to navigate a grid. Type the label shown on a target, then perform an action.
+
+- Enter hint mode: press `c` from normal, bisect, or free mode, or launch with `--hint`
+- Space / Enter / `m` / Delete / Insert act (click / double-click / triple-click / right-click / middle-click) on the selected target and exit
+- `/` starts a drag from the selected target; select another hint and press Space to drag
+- Backspace edits the typed hint label, or returns to the previous mode when no label is typed
+- Escape closes the overlay
+
+Detection is pluggable behind a `HintDetector` trait, selected by `hint.detector`:
+
+- **`atspi`** (Linux, built in): reads the desktop [AT-SPI](https://docs.rs/atspi) accessibility tree over D-Bus and labels interactive elements using their roles and bounds. It is usually the most accurate detector. GTK, Qt, and Gecko apps tend to work well; Chromium/Electron may need accessibility enabled; games and canvas-heavy apps may expose little or nothing. On Wayland, exact placement requires compositor support; Hyprland and Sway are supported. On X11, coordinates are already absolute. Only the primary monitor is handled.
+- **`cv`** (always available): a pure-Rust computer-vision pass over a screenshot — downscale → Canny edges → morphological closing → connected components → resolution-relative size/shape filtering with a per-box quality score. No model, no network, no services to talk to. CV sees visual *structure*, not semantic clickability, so it will still occasionally label a border, separator, or decorative shape, and miss a low-contrast control. Tune `edge_low_threshold`/`edge_high_threshold` (raise to cut clutter, lower to catch faint controls).
+- **`auto`** (default): tries AT-SPI first and falls back to CV when needed. If an app exposes window chrome but not content, CV labels the unhandled content area.
+
+```toml
+[hint]
+detector = "auto"   # or "atspi" / "cv"
+```
 
 ### Free mode
 
@@ -156,6 +179,7 @@ All fields are optional. Missing fields use defaults.
 
 ```toml
 font_size = 2  # Glyph scale multiplier for the 8x8 bitmap font: 1=8px, 2=16px, 3=24px
+hint_font_size = 1  # Optional override for element hint labels; defaults to 1 for dense target screens
 sub_hint_font_size = 2  # Optional override for sub-grid hint glyphs; defaults to font_size when omitted
 panel_font_size = 2  # Optional override for macro/search popup panels; defaults to sub_hint_font_size, then font_size
 
@@ -171,12 +195,22 @@ rows = 2
 cols = 2
 min_cell_size = 16  # Stop subdividing once a cell would be smaller than this, in pixels
 
+[hint]
+detector = "auto"  # "auto" (default) | "atspi" (Linux) | "cv"
+alphabet = ["a", "s", "d", "f", "j", "k", "l", ";", "g", "h", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p"]  # Keys used to build hint labels
+max_label_len = 3
+auto_click = false  # If true, click immediately when a typed label uniquely identifies a target
+downscale_longest = 1280  # CV: longest screen-capture side fed to the detector; 0 = no downscale
+edge_low_threshold = 50  # CV: Canny low threshold (raise to cut clutter, lower to catch faint controls)
+edge_high_threshold = 150  # CV: Canny high threshold
+
 [macros]
 playback_speed = 1.0  # 1.0 = recorded speed, 2.0 = twice as fast, 0.0 or negative = instant (no waits)
 
 [keys]
 normal = "n"
 bisect = "b"
+hint = "c"
 free_mode = "v"
 click = "space"
 double_click = "enter"
@@ -211,6 +245,10 @@ rec_bg = "#f44336ff"             # Material Design Red (urgent, visible everywhe
 border = "#00e676ff"             # Material Green (fresh, visible)
 border_dragging = "#e91e63ff"    # Material Pink (strong attention grabber)
 crosshair = "#ffaa00ff"          # Amber crosshair in free mode
+hint_chip_bg = "#2e1e1eee"       # Hint label background
+hint_text = "#00ccffff"          # Untyped hint label text
+hint_text_typed = "#50ff50ff"    # Typed hint label text
+hint_dim = "#66666688"           # Dimmed non-matching hints
 
 [free]
 left = "h"
@@ -244,6 +282,14 @@ max_speed = 500
 - `hints` sets the characters for each bisect cell, in row-major order. Must contain at least `rows * cols` entries; extras are ignored.
 - `rows` and `cols` set the grid shape used at every subdivision level (default 2x2).
 - `min_cell_size` is the pixel floor at which subdivision stops. The glyph scale auto-shrinks to fit the cell, so lowering this lets you reach tiny regions.
+
+### Hint mode
+
+- `alphabet` sets the characters used for generated hint labels. Defaults to the same set as `[grid].hints`; override to change which keys label elements.
+- `max_label_len` caps generated label length. Higher values allow more targets, but require more keystrokes.
+- `auto_click` clicks as soon as the typed label uniquely matches one target. Leave it `false` if you want to choose the action after selecting.
+- `downscale_longest` controls CV detector speed/precision. Lower values are faster but less precise; `0` disables downscaling.
+- `edge_low_threshold` / `edge_high_threshold` tune Canny edge detection. Lower values find more targets and more false positives; higher values are stricter.
 
 ### Free mode
 

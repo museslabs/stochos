@@ -12,6 +12,8 @@ fn subcell_size(region: (u32, u32, u32, u32), rows: u32, cols: u32) -> (u32, u32
 }
 
 pub(super) fn handle_key<B: Backend>(
+    width: u32,
+    height: u32,
     key: &KeyEvent,
     backend: &mut B,
     region: (u32, u32, u32, u32),
@@ -96,6 +98,7 @@ pub(super) fn handle_key<B: Backend>(
             y: cy,
             speed: config().free.base_speed.max(1),
         })),
+        KeyEvent::Hint => Ok(super::hint::enter(backend, width, height)),
         _ => Ok(ModeTransition::Stay),
     }
 }
