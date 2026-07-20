@@ -1,6 +1,8 @@
+use std::os::fd::AsFd;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 use x11rb::connection::{Connection, RequestConnection};
 use x11rb::protocol::xkb as x11_xkb;
 use x11rb::protocol::xkb::ConnectionExt as _;
@@ -23,6 +25,8 @@ const BTN_SCROLL_DOWN: u8 = 5;
 const BTN_SCROLL_LEFT: u8 = 6;
 const BTN_SCROLL_RIGHT: u8 = 7;
 const XKB_USE_CORE_KBD: x11_xkb::DeviceSpec = 256;
+/// How long the event queue must stay idle after a map before we repaint.
+const SETTLE_MS: u16 = 80;
 
 pub struct X11Backend {
     conn: RustConnection,
@@ -37,6 +41,14 @@ pub struct X11Backend {
     /// Screenshot of the desktop captured before mapping the overlay.
     /// Used to alpha-blend the overlay on top (X11 has no compositor).
     background: Vec<u8>,
+    /// Last frame handed to the server. Kept so we can repaint on Expose:
+    /// window contents are lost whenever the server clears the window, and
+    /// nothing else in the app knows it needs to redraw.
+    frame: Vec<u8>,
+    /// Set after (re)mapping. Triggers one repaint once the event queue goes
+    /// idle, so a compositor that started tracking damage on this window only
+    /// after our first paint still ends up with the right contents.
+    settle_repaint: bool,
 }
 
 impl X11Backend {
@@ -74,7 +86,7 @@ impl X11Backend {
             0, // CopyFromParent visual
             &CreateWindowAux::new()
                 .override_redirect(1)
-                .event_mask(EventMask::KEY_PRESS | EventMask::KEY_RELEASE)
+                .event_mask(EventMask::KEY_PRESS | EventMask::KEY_RELEASE | EventMask::EXPOSURE)
                 .background_pixel(0),
         )
         .context("create window")?;
@@ -90,6 +102,14 @@ impl X11Backend {
             window,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
         )?;
+
+        // Round-trip so the server has actually processed the map before we
+        // paint. Under a compositor the map is what makes the window visible
+        // to it; painting ahead of that means our contents land before it can
+        // watch the window for damage, and it has no reason to ever pick them
+        // up (screen stays at the black background_pixel until something else
+        // redraws).
+        conn.sync().context("sync after map")?;
 
         // Paint the captured desktop onto the window immediately so the user
         // never sees the black background_pixel during grab retries.
@@ -113,8 +133,35 @@ impl X11Backend {
             depth,
             mapped: true,
             xkb_state,
+            frame: background.clone(),
             background,
+            settle_repaint: true,
         })
+    }
+
+    /// Re-send the last frame. Cheap enough to do unconditionally: it is one
+    /// image upload of a screen we already have in memory.
+    fn repaint(&self) -> Result<()> {
+        put_pixels(
+            &self.conn,
+            self.window,
+            self.gc,
+            self.screen_w,
+            self.screen_h,
+            self.depth,
+            &self.frame,
+        )?;
+        self.conn.flush().context("flush after repaint")
+    }
+
+    /// Wait up to `timeout_ms` for the connection to have something to read.
+    /// Returns false on timeout.
+    fn wait_readable(&self, timeout_ms: u16) -> Result<bool> {
+        self.conn.flush().context("flush before poll")?;
+        let fd = self.conn.stream().as_fd();
+        let mut pfds = [PollFd::new(fd, PollFlags::POLLIN)];
+        let ready = poll(&mut pfds, PollTimeout::from(timeout_ms)).context("poll x11 fd")?;
+        Ok(ready > 0)
     }
 
     fn teardown(&mut self) -> Result<()> {
@@ -189,7 +236,8 @@ impl Backend for X11Backend {
         // Alpha-blend overlay pixels over the captured desktop background.
         // X11 without a compositor cannot blend for us.
         // Pixel format: BGRA in memory (little-endian ARGB8888).
-        let mut composited = self.background.clone();
+        let composited = &mut self.frame;
+        composited.copy_from_slice(&self.background);
         for i in (0..composited.len()).step_by(4) {
             let a = pixels[i + 3] as u32;
             if a == 255 {
@@ -214,7 +262,7 @@ impl Backend for X11Backend {
             width,
             height,
             self.depth,
-            &composited,
+            &self.frame,
         )?;
         self.conn.flush().context("flush after present")?;
         Ok(())
@@ -350,8 +398,28 @@ impl Backend for X11Backend {
         }
 
         loop {
-            let event = self.conn.wait_for_event().context("wait for event")?;
+            let event = match self.conn.poll_for_event().context("poll for event")? {
+                Some(event) => event,
+                // Nothing pending. If we just mapped, give the server a moment
+                // to deliver anything in flight, then repaint once so a
+                // compositor that missed the damage from our first paint gets
+                // a second chance at it.
+                None if self.settle_repaint => {
+                    if !self.wait_readable(SETTLE_MS)? {
+                        self.settle_repaint = false;
+                        self.repaint()?;
+                    }
+                    continue;
+                }
+                None => self.conn.wait_for_event().context("wait for event")?,
+            };
             match event {
+                // Window contents are lost whenever the server clears the
+                // window (map, restack, a compositor releasing its redirect).
+                // count == 0 marks the last rectangle of the burst.
+                Event::Expose(ev) if ev.count == 0 => {
+                    self.repaint()?;
+                }
                 Event::KeyPress(ev) => {
                     let xkb_kc = xkb::Keycode::new(ev.detail as u32);
                     // subtract 8 to convert X11 keycodes to evdev.
@@ -395,11 +463,14 @@ impl Backend for X11Backend {
                 &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
             )
             .context("raise window")?;
-        self.conn.flush().context("flush after remap")?;
+        // Same reasoning as in `new`: let the map be processed before the
+        // caller's redraw lands on the window.
+        self.conn.sync().context("sync after remap")?;
 
         grab_keyboard_with_retry(&self.conn, self.window).context("regrab keyboard")?;
 
         self.mapped = true;
+        self.settle_repaint = true;
         Ok(())
     }
 }
