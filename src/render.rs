@@ -302,7 +302,9 @@ pub fn render_hints(buf: &mut [u8], w: u32, h: u32, elements: &[HintElement], ty
     // sorted by importance, so the most important targets keep their natural spot
     // and overlapping neighbours (e.g. a browser tab and its close button) are
     // nudged to the nearest free position instead of stacking unreadably.
-    let placements = place_chips(elements, w, h, chip_h, cw);
+    // On macOS every chip touches its click point instead, since AX boxes are
+    // often far wider than the spot the click lands on.
+    let placements = place_chips(elements, w, h, chip_h, cw, cfg!(target_os = "macos"));
 
     // Layered draw: dimmed (non-matching) chips first, then the matching ones on
     // top, so a label you can still type is never hidden under a dimmed
@@ -348,12 +350,17 @@ fn place_chips(
     h: u32,
     chip_h: u32,
     cw: u32,
+    on_click_point: bool,
 ) -> Vec<(u32, u32, u32)> {
     let mut placed: Vec<(u32, u32, u32, u32)> = Vec::with_capacity(elements.len());
     let mut out = Vec::with_capacity(elements.len());
     for el in elements {
         let chip_w = (el.label.chars().count() as u32 * cw + 8).max(18);
-        let rect = find_free_chip(el.bbox, chip_w, chip_h, w, h, &placed);
+        let rect = if on_click_point {
+            chip_at_point((el.cx, el.cy), chip_w, chip_h, w, h, &placed)
+        } else {
+            find_free_chip(el.bbox, chip_w, chip_h, w, h, &placed)
+        };
         placed.push(rect);
         out.push((rect.0, rect.1, chip_w));
     }
@@ -407,6 +414,53 @@ fn find_free_chip(
         }
     }
     (left, on, chip_w, chip_h)
+}
+
+/// The first chip rect touching `point` that clears all `placed` rects, trying
+/// centered, then above, below, left and right of it, then off each corner.
+/// When every spot collides the least covered one wins, so a crowded label stays
+/// readable.
+fn chip_at_point(
+    point: (u32, u32),
+    chip_w: u32,
+    chip_h: u32,
+    w: u32,
+    h: u32,
+    placed: &[(u32, u32, u32, u32)],
+) -> (u32, u32, u32, u32) {
+    let (px, py) = (point.0 as i64, point.1 as i64);
+    let (cw, ch) = (chip_w as i64, chip_h as i64);
+    let rect = |x: i64, y: i64| {
+        (
+            x.clamp(0, w.saturating_sub(chip_w) as i64) as u32,
+            y.clamp(0, h.saturating_sub(chip_h) as i64) as u32,
+            chip_w,
+            chip_h,
+        )
+    };
+    let candidates = [
+        rect(px - cw / 2, py - ch / 2),
+        rect(px - cw / 2, py - ch),
+        rect(px - cw / 2, py),
+        rect(px - cw, py - ch / 2),
+        rect(px, py - ch / 2),
+        rect(px - cw, py - ch),
+        rect(px, py - ch),
+        rect(px - cw, py),
+        rect(px, py),
+    ];
+    let covered = |r| placed.iter().map(|&p| overlap_area(p, r)).sum::<u64>();
+    candidates
+        .into_iter()
+        .find(|&r| !placed.iter().any(|&p| rects_overlap(p, r, 2)))
+        .or_else(|| candidates.into_iter().min_by_key(|&r| covered(r)))
+        .unwrap_or(candidates[0])
+}
+
+fn overlap_area(a: (u32, u32, u32, u32), b: (u32, u32, u32, u32)) -> u64 {
+    let w = (a.0 + a.2).min(b.0 + b.2).saturating_sub(a.0.max(b.0));
+    let h = (a.1 + a.3).min(b.1 + b.3).saturating_sub(a.1.max(b.1));
+    u64::from(w) * u64::from(h)
 }
 
 /// Axis-aligned overlap test with a `gap` margin so chips keep a little air
@@ -811,7 +865,7 @@ mod tests {
         };
         let elements = vec![el("a"), el("s"), el("d")];
         let chip_h = 14;
-        let placements = place_chips(&elements, 1920, 1080, chip_h, 16);
+        let placements = place_chips(&elements, 1920, 1080, chip_h, 16, false);
         let rects: Vec<(u32, u32, u32, u32)> = placements
             .iter()
             .map(|&(x, y, cw)| (x, y, cw, chip_h))
@@ -826,5 +880,87 @@ mod tests {
                 );
             }
         }
+    }
+
+    type Rect = (u32, u32, u32, u32);
+
+    const CW: u32 = 8;
+    const CHIP_H: u32 = 14;
+    const W: u32 = 1920;
+    const H: u32 = 1080;
+
+    fn el(bbox: Rect, label: &str) -> HintElement {
+        let (x, y, w, h) = bbox;
+        HintElement {
+            cx: x + w / 2,
+            cy: y + h / 2,
+            bbox,
+            label: label.to_string(),
+        }
+    }
+
+    /// Click-point chips, each checked to stay on screen and touch its point.
+    fn anchored_chips(elements: &[HintElement]) -> Vec<Rect> {
+        let rects: Vec<Rect> = place_chips(elements, W, H, CHIP_H, CW, true)
+            .into_iter()
+            .map(|(x, y, chip_w)| (x, y, chip_w, CHIP_H))
+            .collect();
+        for (el, &r) in elements.iter().zip(&rects) {
+            assert!(r.0 + r.2 <= W && r.1 + r.3 <= H, "{r:?} off screen");
+            assert!(
+                (r.0..=r.0 + r.2).contains(&el.cx) && (r.1..=r.1 + r.3).contains(&el.cy),
+                "{r:?} drifted from ({}, {})",
+                el.cx,
+                el.cy
+            );
+        }
+        rects
+    }
+
+    /// Chips whose letters are at least half covered by an earlier chip, which
+    /// is drawn on top. Letters sit where `draw_hint_chip` puts them.
+    fn hidden_labels(elements: &[HintElement], rects: &[Rect]) -> Vec<usize> {
+        let on_top = |i: usize, (px, py): (u32, u32)| {
+            rects[..i]
+                .iter()
+                .any(|&(x, y, w, h)| px >= x && px < x + w && py >= y && py < y + h)
+        };
+        (0..rects.len())
+            .filter(|&i| {
+                let (x, y, _, _) = rects[i];
+                let tw = elements[i].label.chars().count() as u32 * CW;
+                let (tx, ty, th) = (x + 4, y + 3, 8);
+                let covered = (ty..ty + th)
+                    .flat_map(|py| (tx..tx + tw).map(move |px| (px, py)))
+                    .filter(|&p| on_top(i, p))
+                    .count() as u32;
+                covered * 2 >= tw * th
+            })
+            .collect()
+    }
+
+    #[test]
+    fn click_point_chips_keep_crowded_labels_readable() {
+        let bbox = (100, 100, 20, 20);
+        let coincident = vec![el(bbox, "a"), el(bbox, "s"), el(bbox, "d")];
+        let calendar: Vec<_> = (0..42)
+            .map(|i| el((100 + i % 7 * 24, 100 + i / 7 * 20, 22, 18), "ab"))
+            .collect();
+        for elements in [coincident, calendar] {
+            let rects = anchored_chips(&elements);
+            assert_eq!(hidden_labels(&elements, &rects), Vec::<usize>::new());
+        }
+    }
+
+    #[test]
+    fn click_point_chips_stay_on_wide_and_corner_targets() {
+        let elements = vec![
+            el((200, 400, 900, 40), "a"),
+            el((0, 0, 1, 1), "s"),
+            el((W - 1, 0, 1, 1), "d"),
+            el((0, H - 1, 1, 1), "f"),
+            el((W - 1, H - 1, 1, 1), "g"),
+        ];
+        anchored_chips(&elements);
     }
 }

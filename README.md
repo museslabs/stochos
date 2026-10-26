@@ -137,7 +137,7 @@ Detection is pluggable behind a `HintDetector` trait, selected by `hint.detector
 
 - **`atspi`** (Linux, built in): reads the desktop [AT-SPI](https://docs.rs/atspi) accessibility tree over D-Bus and labels interactive elements using their roles and bounds. It is usually the most accurate detector. GTK, Qt, and Gecko apps tend to work well; Chromium/Electron may need accessibility enabled; games and canvas-heavy apps may expose little or nothing. On Wayland, exact placement requires compositor support; Hyprland and Sway are supported. On X11, coordinates are already absolute. Only the primary monitor is handled.
 - **`cv`** (always available): a pure-Rust computer-vision pass over a screenshot — downscale → Canny edges → morphological closing → connected components → resolution-relative size/shape filtering with a per-box quality score. No model, no network, no services to talk to. CV sees visual *structure*, not semantic clickability, so it will still occasionally label a border, separator, or decorative shape, and miss a low-contrast control. Tune `edge_low_threshold`/`edge_high_threshold` (raise to cut clutter, lower to catch faint controls).
-- **`auto`** (default): tries AT-SPI first and falls back to CV when needed. If an app exposes window chrome but not content, CV labels the unhandled content area.
+- **`auto`** (default): tries AT-SPI first and falls back to CV when needed. If an app exposes window chrome but not content, CV labels the unhandled content area. On macOS it reads the Accessibility API instead, and runs CV only when that finds too few targets, limited to the focused window.
 
 ```toml
 [hint]
