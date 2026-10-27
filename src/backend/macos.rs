@@ -703,6 +703,11 @@ impl Backend for MacosBackend {
         Ok(())
     }
 
+    fn hover(&mut self, x: u32, y: u32) -> Result<()> {
+        self.post_mouse(K_CGEVENT_MOUSE_MOVED, 0, x, y, 0);
+        Ok(())
+    }
+
     fn click(&mut self, x: u32, y: u32) -> Result<()> {
         self.hide_overlay();
         self.focus_target_app();

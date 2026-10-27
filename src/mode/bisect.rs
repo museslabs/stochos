@@ -44,6 +44,11 @@ pub(super) fn handle_key<B: Backend>(
             backend.middle_click(cx, cy)?;
             Ok(ModeTransition::Exit)
         }
+        #[cfg(target_os = "macos")]
+        KeyEvent::Hover => {
+            backend.hover(cx, cy)?;
+            Ok(ModeTransition::Stay)
+        }
         KeyEvent::ScrollUp => {
             backend.scroll_up()?;
             Ok(ModeTransition::Redraw)

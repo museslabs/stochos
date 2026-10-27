@@ -221,6 +221,8 @@ pub struct KeyBindings {
     pub macro_record: Key,
     pub right_click: Key,
     pub middle_click: Key,
+    #[cfg(target_os = "macos")]
+    pub hover: Key,
     pub scroll_up: Key,
     pub scroll_down: Key,
     pub scroll_left: Key,
@@ -243,6 +245,8 @@ impl Default for KeyBindings {
             macro_record: Key::Char('`'),
             right_click: Key::Delete,
             middle_click: Key::Insert,
+            #[cfg(target_os = "macos")]
+            hover: Key::Char(','),
             scroll_up: Key::Up,
             scroll_down: Key::Down,
             scroll_left: Key::Left,
@@ -305,6 +309,10 @@ impl KeyBindings {
         }
         if key == self.scroll_right {
             return Some(KeyEvent::ScrollRight);
+        }
+        #[cfg(target_os = "macos")]
+        if key == self.hover {
+            return Some(KeyEvent::Hover);
         }
         None
     }
