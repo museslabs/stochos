@@ -53,6 +53,18 @@ pub(super) fn handle_key<B: Backend>(
         KeyEvent::TripleClick => action(backend, target, Backend::triple_click),
         KeyEvent::RightClick => action(backend, target, Backend::right_click),
         KeyEvent::MiddleClick => action(backend, target, Backend::middle_click),
+        #[cfg(target_os = "macos")]
+        KeyEvent::Hover => {
+            let Some((x, y)) = target else {
+                return Ok(ModeTransition::Stay);
+            };
+            backend.hover(x, y)?;
+            Ok(ModeTransition::Enter(Mode::Normal {
+                input_state: crate::input::InputState::First,
+                target: None,
+                drag_origin: None,
+            }))
+        }
         KeyEvent::Char('/') => {
             if let Some((x, y)) = target {
                 Ok(ModeTransition::Enter(Mode::Normal {

@@ -13,6 +13,8 @@ pub enum KeyEvent {
     TripleClick,
     RightClick,
     MiddleClick,
+    #[cfg(target_os = "macos")]
+    Hover,
     Close,
     Undo,
     MacroMenu,
@@ -55,6 +57,9 @@ pub trait Backend {
 
     /// Move the mouse pointer to an absolute position.
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()>;
+
+    #[cfg(target_os = "macos")]
+    fn hover(&mut self, x: u32, y: u32) -> Result<()>;
 
     /// Tear down the overlay, click at (x, y), then return.
     fn click(&mut self, x: u32, y: u32) -> Result<()>;
