@@ -41,6 +41,12 @@ const MAX_ANCESTOR_DEPTH: usize = 128;
 
 pub struct AtspiHintDetector;
 
+impl AtspiHintDetector {
+    /// Browsers leave small visual controls out of AT-SPI, so CV adds them.
+    pub const SUPPLEMENT_WITH_CV: bool = true;
+    pub const SCOPE_CV_FALLBACK: bool = false;
+}
+
 impl HintDetector for AtspiHintDetector {
     fn name(&self) -> &'static str {
         "atspi"

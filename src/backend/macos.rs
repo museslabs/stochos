@@ -102,6 +102,9 @@ const K_CGIMAGE_ALPHA_PREMULTIPLIED_FIRST: u32 = 2;
 const K_CGBITMAP_BYTE_ORDER32_LITTLE: u32 = 2 << 12;
 const K_CGRENDERING_INTENT_DEFAULT: u32 = 0;
 
+const K_CGWINDOW_LIST_OPTION_ON_SCREEN_BELOW_WINDOW: u32 = 1 << 2;
+const K_CGWINDOW_IMAGE_DEFAULT: u32 = 0;
+
 const K_CGMAXIMUM_WINDOW_LEVEL_KEY: i32 = 14;
 const K_CFSTRING_ENCODING_UTF8: u32 = 0x08000100;
 
@@ -152,6 +155,12 @@ unsafe extern "C" {
     ) -> CFMachPortRef;
     fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
     fn CGWindowLevelForKey(key: i32) -> i32;
+    fn CGWindowListCreateImage(
+        screen_bounds: CGRect,
+        list_option: u32,
+        window_id: u32,
+        image_option: u32,
+    ) -> CGImageRef;
 
     fn CGColorSpaceCreateDeviceRGB() -> CGColorSpaceRef;
     fn CGColorSpaceRelease(cs: CGColorSpaceRef);
@@ -634,14 +643,34 @@ impl Backend for MacosBackend {
         use objc2_core_graphics::CGImage;
 
         let display = objc2_core_graphics::CGMainDisplayID();
-        // CGDisplayCreateImage is marked deprecated in favour of
-        // ScreenCaptureKit, but it still functions on macOS 14/15 and SCK is
+        // Only the windows below a visible overlay, so the capture never shows
+        // stochos's own grid or labels when hint mode is entered from another mode.
+        let below_overlay = u32::try_from(self.window.windowNumber())
+            .ok()
+            .filter(|&id| self.visible && id > 0)
+            .and_then(|id| {
+                let image = unsafe {
+                    CGWindowListCreateImage(
+                        CGDisplayBounds(CGMainDisplayID()),
+                        K_CGWINDOW_LIST_OPTION_ON_SCREEN_BELOW_WINDOW,
+                        id,
+                        K_CGWINDOW_IMAGE_DEFAULT,
+                    )
+                };
+                ptr::NonNull::new(image.cast::<CGImage>())
+                    .map(|image| unsafe { objc2_core_foundation::CFRetained::from_raw(image) })
+            });
+        // Both capture calls are marked deprecated in favour of
+        // ScreenCaptureKit, but they still function on macOS 14/15 and SCK is
         // async-only.
         // Revisit when SCK exposes a synchronous shim.
         #[allow(deprecated)]
-        let image = objc2_core_graphics::CGDisplayCreateImage(display).ok_or_else(|| {
-            anyhow!("CGDisplayCreateImage returned nil (screen recording permission?)")
-        })?;
+        let image = match below_overlay {
+            Some(image) => image,
+            None => objc2_core_graphics::CGDisplayCreateImage(display).ok_or_else(|| {
+                anyhow!("CGDisplayCreateImage returned nil (screen recording permission?)")
+            })?,
+        };
         let width = CGImage::width(Some(&image));
         let height = CGImage::height(Some(&image));
         if width == 0 || height == 0 {
