@@ -710,6 +710,10 @@ impl Backend for MacosBackend {
 
     fn click(&mut self, x: u32, y: u32) -> Result<()> {
         self.hide_overlay();
+        self.click_stay(x, y)
+    }
+
+    fn click_stay(&mut self, x: u32, y: u32) -> Result<()> {
         self.focus_target_app();
         self.click_at(
             K_CGEVENT_LEFT_MOUSE_DOWN,
