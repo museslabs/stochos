@@ -60,11 +60,14 @@ pub(super) fn handle_key<B: Backend>(
             Ok(ModeTransition::Exit)
         }
         #[cfg(target_os = "macos")]
-        KeyEvent::Hover if drag_origin.is_none() => {
+        KeyEvent::Hover | KeyEvent::ClickStay if drag_origin.is_none() => {
             let Some((x, y)) = target else {
                 return Ok(ModeTransition::Stay);
             };
-            backend.hover(x, y)?;
+            match key {
+                KeyEvent::Hover => backend.hover(x, y)?,
+                _ => backend.click_stay(x, y)?,
+            }
             Ok(ModeTransition::Enter(Mode::Normal {
                 input_state: InputState::First,
                 target: None,

@@ -9,6 +9,8 @@ pub enum KeyEvent {
     FreeMode,
     Char(char),
     Click,
+    #[cfg(target_os = "macos")]
+    ClickStay,
     DoubleClick,
     TripleClick,
     RightClick,
@@ -63,6 +65,10 @@ pub trait Backend {
 
     /// Tear down the overlay, click at (x, y), then return.
     fn click(&mut self, x: u32, y: u32) -> Result<()>;
+
+    /// Click at (x, y) and leave the overlay up afterwards.
+    #[cfg(target_os = "macos")]
+    fn click_stay(&mut self, x: u32, y: u32) -> Result<()>;
 
     /// Tear down the overlay, double click at (x, y), then return.
     fn double_click(&mut self, x: u32, y: u32) -> Result<()>;
