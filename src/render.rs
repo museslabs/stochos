@@ -140,6 +140,18 @@ pub fn render_grid(buf: &mut [u8], w: u32, h: u32, input: &InputState, dragging:
             c.draw_glyph(lx + char_w + gap, ly, second_hint, c2, scale);
         }
     }
+
+    // Inner grid lines only (1..ncols / 1..nrows skips the outer edge).
+    // Transparent by default, so the look is unchanged unless set.
+    let separator = colors.separator.unwrap_or([0, 0, 0, 0]);
+    if separator[3] != 0 {
+        for col in 1..ncols {
+            c.fill_rect(col * cell_w, 0, 1, nrows * cell_h, separator);
+        }
+        for row in 1..nrows {
+            c.fill_rect(0, row * cell_h, ncols * cell_w, 1, separator);
+        }
+    }
 }
 
 pub fn render_bisect(buf: &mut [u8], w: u32, h: u32, region: (u32, u32, u32, u32)) {
@@ -197,6 +209,20 @@ pub fn render_bisect(buf: &mut [u8], w: u32, h: u32, region: (u32, u32, u32, u32
             );
             let (gs, ox, oy) = glyph_layout(hint, sub_w, sub_h, scale);
             c.draw_glyph(x + ox, y + oy, hint, colors.text_first, gs);
+        }
+    }
+
+    // Inner separators between bisect cells (at the sub-span boundaries,
+    // skipping the region edges). Transparent by default.
+    let separator = colors.separator_bisect.unwrap_or([0, 0, 0, 0]);
+    if separator[3] != 0 {
+        for col in 1..cols {
+            let (x, _) = col_spans[col as usize];
+            c.fill_rect(x, ry, 1, rh, separator);
+        }
+        for row in 1..rows {
+            let (y, _) = row_spans[row as usize];
+            c.fill_rect(rx, y, rw, 1, separator);
         }
     }
 
@@ -791,6 +817,20 @@ fn render_sub_grid(
                 bg,
             );
             c.draw_glyph(x + glyph_ox, y + glyph_oy, hint, text, glyph_scale);
+        }
+    }
+
+    // Inner separators between sub-cells (at the sub-span boundaries, skipping
+    // the outer frame drawn above in `border`). Transparent by default.
+    let separator = colors.separator_subgrid.unwrap_or([0, 0, 0, 0]);
+    if separator[3] != 0 {
+        for sub_col in 1..nsub_cols {
+            let (x, _) = col_spans[sub_col as usize];
+            c.fill_rect(x, cell_y, 1, cell_h, separator);
+        }
+        for sub_row in 1..nsub_rows {
+            let (y, _) = row_spans[sub_row as usize];
+            c.fill_rect(cell_x, y, cell_w, 1, separator);
         }
     }
 }
