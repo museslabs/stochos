@@ -5,6 +5,11 @@
 use crate::backend::Backend;
 use crate::config::{config, HintDetectorKind};
 
+#[cfg(target_os = "linux")]
+use super::atspi::AtspiHintDetector as AccessibilityDetector;
+#[cfg(target_os = "macos")]
+use super::ax::AxHintDetector as AccessibilityDetector;
+
 #[derive(Clone, Copy, Debug)]
 pub struct HintCandidate {
     /// Box in capture-pixel coordinates: `(x, y, w, h)`.
@@ -56,8 +61,8 @@ fn atspi_detector() -> anyhow::Result<Box<dyn HintDetector>> {
 /// fewer means the accessibility tree is absent or a stub.
 const CASCADE_MIN_ATSPI_TARGETS: usize = 5;
 
-/// The default detector: prefer semantic AT-SPI targets, but supplement them
-/// with CV for small visual controls a browser may omit from accessibility.
+/// The default detector. It prefers accessibility targets and falls back to CV
+/// when the tree is absent or too sparse.
 struct AutoDetector;
 
 impl HintDetector for AutoDetector {
@@ -66,86 +71,68 @@ impl HintDetector for AutoDetector {
     }
 
     fn detect(&self, backend: &mut dyn Backend) -> anyhow::Result<DetectorOutput> {
-        #[cfg(target_os = "linux")]
-        {
-            match super::atspi::AtspiHintDetector.detect(backend) {
-                Ok(output) if output.candidates.len() >= CASCADE_MIN_ATSPI_TARGETS => {
-                    return Ok(supplement_with_cv(backend, output));
-                }
-                Ok(output) => eprintln!(
-                    "hint: atspi found only {} targets, falling back to cv",
+        let semantic = AccessibilityDetector;
+        let sparse = match semantic.detect(backend) {
+            Ok(output) if output.candidates.len() >= CASCADE_MIN_ATSPI_TARGETS => {
+                return Ok(if AccessibilityDetector::SUPPLEMENT_WITH_CV {
+                    supplement_with_cv(backend, output)
+                } else {
+                    output
+                });
+            }
+            Ok(output) => {
+                eprintln!(
+                    "hint: {} found only {} targets, falling back to cv",
+                    semantic.name(),
                     output.candidates.len()
-                ),
-                Err(e) => eprintln!("hint: atspi detection failed, falling back to cv: {e:#}"),
+                );
+                Some(output)
             }
-            super::cv::CvHintDetector.detect(backend)
-        }
-
-        // On macOS the AX tree is often thin (Electron/Firefox), so when the
-        // semantic pass is too sparse to use directly we still keep its focus
-        // rect to scope the CV fallback to the active window rather than
-        // painting hints across the whole desktop.
-        #[cfg(target_os = "macos")]
-        {
-            let mut fallback_focus: Option<(u32, u32, u32, u32)> = None;
-            match super::ax::AxHintDetector.detect(backend) {
-                Ok(output) if output.candidates.len() >= CASCADE_MIN_ATSPI_TARGETS => {
-                    return Ok(supplement_with_cv(backend, output));
-                }
-                Ok(output) => {
-                    eprintln!(
-                        "hint: ax found only {} targets, falling back to cv",
-                        output.candidates.len()
-                    );
-                    fallback_focus = output.focus_rect;
-                }
-                Err(e) => eprintln!("hint: ax detection failed, falling back to cv: {e:#}"),
+            Err(e) => {
+                eprintln!(
+                    "hint: {} detection failed, falling back to cv: {e:#}",
+                    semantic.name()
+                );
+                None
             }
-            let cv_output = super::cv::CvHintDetector.detect(backend)?;
-            Ok(scope_cv_output(
-                cv_output,
-                fallback_focus,
-                backend.screen_size(),
-            ))
-        }
+        };
+        let cv = super::cv::CvHintDetector.detect(backend)?;
+        Ok(match sparse {
+            Some(DetectorOutput {
+                candidates,
+                focus_rect: Some(window),
+                ..
+            }) if AccessibilityDetector::SCOPE_CV_FALLBACK => {
+                let (screen_w, screen_h) = backend.screen_size();
+                DetectorOutput {
+                    candidates: fill_with_cv(candidates, window, cv, screen_w, screen_h),
+                    capture_w: screen_w,
+                    capture_h: screen_h,
+                    focus_rect: Some(window),
+                }
+            }
+            _ => cv,
+        })
     }
 }
 
-/// Clip a pure-CV pass to the active-window rect that the semantic detector
-/// did expose, even when its candidate list was too sparse to use directly.
-/// Capture coordinates are physical pixels; focus rects are screen-logical, so
-/// we filter in logical space after the shared remap.
-#[cfg(target_os = "macos")]
-fn scope_cv_output(
-    output: DetectorOutput,
-    focus_rect: Option<(u32, u32, u32, u32)>,
-    screen: (u32, u32),
-) -> DetectorOutput {
-    let Some(rect) = focus_rect else {
-        return output;
-    };
-    let (screen_w, screen_h) = screen;
-    let logical = super::remap_to_screen(
-        output.candidates,
-        output.capture_w,
-        output.capture_h,
-        screen_w,
-        screen_h,
-    );
-    let kept: Vec<HintCandidate> = logical
-        .into_iter()
-        .filter(|c| {
-            let cx = c.bbox.0 + c.bbox.2 / 2;
-            let cy = c.bbox.1 + c.bbox.3 / 2;
-            cx >= rect.0 && cx < rect.0 + rect.2 && cy >= rect.1 && cy < rect.1 + rect.3
-        })
-        .collect();
-    DetectorOutput {
-        candidates: kept,
-        capture_w: screen_w,
-        capture_h: screen_h,
-        focus_rect: Some(rect),
-    }
+/// `semantic` plus the CV candidates centered inside `window` but outside every
+/// semantic box. Captures may be physical pixels while windows are
+/// screen-logical, so CV is rescaled to `w`x`h` first.
+fn fill_with_cv(
+    mut semantic: Vec<HintCandidate>,
+    window: (u32, u32, u32, u32),
+    cv: DetectorOutput,
+    w: u32,
+    h: u32,
+) -> Vec<HintCandidate> {
+    let boxes: Vec<_> = semantic.iter().map(|c| c.bbox).collect();
+    let visual = super::remap_to_screen(cv.candidates, cv.capture_w, cv.capture_h, w, h);
+    semantic.extend(visual.into_iter().filter(|c| {
+        let p = center(c.bbox);
+        contains_point(window, p) && !boxes.iter().any(|&b| contains_point(b, p))
+    }));
+    semantic
 }
 
 /// Add visual candidates that are not already covered by a precise semantic box.
@@ -322,6 +309,31 @@ mod tests {
         let semantic = (500u32, 500u32, 40u32, 40u32);
         assert!(contains_point(semantic, (520, 520)));
         assert!(!contains_point(semantic, (560, 520)));
+    }
+
+    #[test]
+    fn sparse_dialog_keeps_its_buttons_and_fills_only_its_window() {
+        let candidate = |bbox| HintCandidate { bbox, score: 1.0 };
+        let buttons = [(420, 330, 60, 20), (490, 330, 60, 20), (560, 330, 60, 20)];
+        // A 2x capture, so CV boxes halve on the way to screen space.
+        let cv = DetectorOutput {
+            candidates: [(1140, 664, 80, 32), (900, 560, 100, 30), (100, 100, 40, 40)]
+                .map(candidate)
+                .to_vec(),
+            capture_w: 3840,
+            capture_h: 2160,
+            focus_rect: None,
+        };
+        let filled = fill_with_cv(
+            buttons.map(candidate).to_vec(),
+            (400, 250, 240, 120),
+            cv,
+            1920,
+            1080,
+        );
+        let boxes: Vec<_> = filled.iter().map(|c| c.bbox).collect();
+        // The CV copy of the last button and the box outside the dialog drop.
+        assert_eq!(boxes, [buttons.as_slice(), &[(450, 280, 50, 15)]].concat());
     }
 
     #[test]
