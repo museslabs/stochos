@@ -9,13 +9,11 @@ pub enum KeyEvent {
     FreeMode,
     Char(char),
     Click,
-    #[cfg(target_os = "macos")]
     ClickStay,
     DoubleClick,
     TripleClick,
     RightClick,
     MiddleClick,
-    #[cfg(target_os = "macos")]
     Hover,
     Close,
     Undo,
@@ -60,14 +58,13 @@ pub trait Backend {
     /// Move the mouse pointer to an absolute position.
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()>;
 
-    #[cfg(target_os = "macos")]
+    /// Hover at (x, y) and leave the overlay up afterwards.
     fn hover(&mut self, x: u32, y: u32) -> Result<()>;
 
     /// Tear down the overlay, click at (x, y), then return.
     fn click(&mut self, x: u32, y: u32) -> Result<()>;
 
     /// Click at (x, y) and leave the overlay up afterwards.
-    #[cfg(target_os = "macos")]
     fn click_stay(&mut self, x: u32, y: u32) -> Result<()>;
 
     /// Tear down the overlay, double click at (x, y), then return.
