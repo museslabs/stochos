@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 use x11rb::connection::{Connection, RequestConnection};
+use x11rb::protocol::shape::{self, ConnectionExt as _};
 use x11rb::protocol::xkb as x11_xkb;
 use x11rb::protocol::xkb::ConnectionExt as _;
 use x11rb::protocol::xproto::*;
@@ -27,6 +28,13 @@ const BTN_SCROLL_RIGHT: u8 = 7;
 const XKB_USE_CORE_KBD: x11_xkb::DeviceSpec = 256;
 /// How long the event queue must stay idle after a map before we repaint.
 const SETTLE_MS: u16 = 80;
+/// How long the app gets to react to a hover or click before the overlay
+/// comes back.
+const ACTION_SETTLE: Duration = Duration::from_millis(100);
+/// How long the compositor gets to repaint the cleared overlay before a
+/// capture.
+const COMPOSITOR_SETTLE: Duration = Duration::from_millis(50);
+const GRAB_ATTEMPTS: u32 = 10;
 
 pub struct X11Backend {
     conn: RustConnection,
@@ -38,8 +46,11 @@ pub struct X11Backend {
     depth: u8,
     mapped: bool,
     xkb_state: Option<xkb::State>,
-    /// Screenshot of the desktop captured before mapping the overlay.
-    /// Used to alpha-blend the overlay on top (X11 has no compositor).
+    /// A compositor blends the overlay, a 32-bit ARGB window, over the live
+    /// desktop. Without one, the overlay paints `background` itself.
+    composited: bool,
+    /// Screenshot of the desktop captured before mapping the overlay, for
+    /// blending the overlay on top. Empty when composited.
     background: Vec<u8>,
     /// Last frame handed to the server. Kept so we can repaint on Expose:
     /// window contents are lost whenever the server clears the window, and
@@ -65,13 +76,31 @@ impl X11Backend {
         let root = screen.root;
         let screen_w = screen.width_in_pixels as u32;
         let screen_h = screen.height_in_pixels as u32;
-        let depth = screen.root_depth;
-
-        // Capture the desktop before we cover it with the overlay.
-        let background = capture_root(&conn, root, screen_w, screen_h)?;
 
         let window = conn.generate_id()?;
         let gc = conn.generate_id()?;
+        let mut aux = CreateWindowAux::new()
+            .override_redirect(1)
+            .event_mask(EventMask::KEY_PRESS | EventMask::KEY_RELEASE | EventMask::EXPOSURE)
+            .background_pixel(0);
+
+        let argb_visual = argb_visual(&conn, screen_num)?;
+        let composited = argb_visual.is_some();
+        let (depth, visual, background) = match argb_visual {
+            Some(visual) => {
+                let colormap = conn.generate_id()?;
+                conn.create_colormap(ColormapAlloc::NONE, colormap, root, visual)
+                    .context("create colormap")?;
+                aux = aux.colormap(colormap).border_pixel(0);
+                (32, visual, Vec::new())
+            }
+            // Capture the desktop before we cover it with the overlay.
+            None => (
+                screen.root_depth,
+                x11rb::COPY_FROM_PARENT,
+                capture_root(&conn, root, screen_w, screen_h)?,
+            ),
+        };
 
         conn.create_window(
             depth,
@@ -83,11 +112,8 @@ impl X11Backend {
             screen_h as u16,
             0,
             WindowClass::INPUT_OUTPUT,
-            0, // CopyFromParent visual
-            &CreateWindowAux::new()
-                .override_redirect(1)
-                .event_mask(EventMask::KEY_PRESS | EventMask::KEY_RELEASE | EventMask::EXPOSURE)
-                .background_pixel(0),
+            visual,
+            &aux,
         )
         .context("create window")?;
 
@@ -113,8 +139,10 @@ impl X11Backend {
 
         // Paint the captured desktop onto the window immediately so the user
         // never sees the black background_pixel during grab retries.
-        put_pixels(&conn, window, gc, screen_w, screen_h, depth, &background)?;
-        conn.flush().context("flush after initial paint")?;
+        if !composited {
+            put_pixels(&conn, window, gc, screen_w, screen_h, depth, &background)?;
+            conn.flush().context("flush after initial paint")?;
+        }
 
         // Grab keyboard so all keys go to our overlay.
         // Retry briefly: on GNOME the compositor may still hold the grab when
@@ -133,7 +161,12 @@ impl X11Backend {
             depth,
             mapped: true,
             xkb_state,
-            frame: background.clone(),
+            composited,
+            frame: if composited {
+                vec![0; (screen_w * screen_h * 4) as usize]
+            } else {
+                background.clone()
+            },
             background,
             settle_repaint: true,
         })
@@ -225,6 +258,72 @@ impl X11Backend {
         std::thread::sleep(std::time::Duration::from_millis(50));
         self.reopen()
     }
+
+    /// Map the overlay again and take the keyboard back. Returns false,
+    /// unmapped, when another client holds the keyboard.
+    fn remap(&mut self) -> Result<bool> {
+        if self.mapped {
+            return Ok(true);
+        }
+        if self.composited {
+            // Take the pointer back from a hover.
+            self.conn
+                .shape_mask(
+                    shape::SO::SET,
+                    shape::SK::INPUT,
+                    self.window,
+                    0,
+                    0,
+                    x11rb::NONE,
+                )
+                .context("reset input shape")?;
+        } else {
+            // Re-capture desktop since it may have changed after our action.
+            self.background = capture_root(&self.conn, self.root, self.screen_w, self.screen_h)?;
+        }
+        self.conn.map_window(self.window).context("remap window")?;
+        self.conn
+            .configure_window(
+                self.window,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            )
+            .context("raise window")?;
+        // Same reasoning as in `new`: let the map be processed before the
+        // caller's redraw lands on the window.
+        self.conn.sync().context("sync after remap")?;
+
+        // Same as in `new`: show the desktop while the grab retries run.
+        if !self.composited {
+            put_pixels(
+                &self.conn,
+                self.window,
+                self.gc,
+                self.screen_w,
+                self.screen_h,
+                self.depth,
+                &self.background,
+            )?;
+            self.conn.flush().context("flush after remap paint")?;
+        }
+
+        if !try_grab_keyboard(&self.conn, self.window).context("regrab keyboard")? {
+            self.conn.unmap_window(self.window).context("unmap")?;
+            self.conn.flush().context("flush after unmap")?;
+            return Ok(false);
+        }
+
+        self.mapped = true;
+        self.settle_repaint = true;
+        Ok(true)
+    }
+
+    /// Bring the overlay back after a hover or click. If the action opened a
+    /// menu that grabbed the keyboard, stay closed so the menu stays usable.
+    fn reopen_after_action(&mut self) -> Result<()> {
+        std::thread::sleep(ACTION_SETTLE);
+        self.remap()?;
+        Ok(())
+    }
 }
 
 impl Backend for X11Backend {
@@ -233,26 +332,41 @@ impl Backend for X11Backend {
     }
 
     fn present(&mut self, pixels: &[u8], width: u32, height: u32) -> Result<()> {
-        // Alpha-blend overlay pixels over the captured desktop background.
-        // X11 without a compositor cannot blend for us.
-        // Pixel format: BGRA in memory (little-endian ARGB8888).
-        let composited = &mut self.frame;
-        composited.copy_from_slice(&self.background);
-        for i in (0..composited.len()).step_by(4) {
-            let a = pixels[i + 3] as u32;
-            if a == 255 {
-                composited[i] = pixels[i];
-                composited[i + 1] = pixels[i + 1];
-                composited[i + 2] = pixels[i + 2];
-            } else if a > 0 {
-                let inv = 255 - a;
-                composited[i] = ((pixels[i] as u32 * a + composited[i] as u32 * inv) / 255) as u8;
-                composited[i + 1] =
-                    ((pixels[i + 1] as u32 * a + composited[i + 1] as u32 * inv) / 255) as u8;
-                composited[i + 2] =
-                    ((pixels[i + 2] as u32 * a + composited[i + 2] as u32 * inv) / 255) as u8;
+        // Pixel format: BGRA in memory (little-endian ARGB8888), straight alpha.
+        let frame = &mut self.frame;
+        if self.composited {
+            // The compositor does the blending and expects premultiplied alpha.
+            for (dst, src) in frame
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(pixels.as_chunks::<4>().0)
+            {
+                let a = src[3] as u32;
+                for c in 0..3 {
+                    dst[c] = (src[c] as u32 * a / 255) as u8;
+                }
+                dst[3] = src[3];
             }
-            // a == 0: keep background as-is
+        } else {
+            // Alpha-blend overlay pixels over the captured desktop background.
+            frame.copy_from_slice(&self.background);
+            for i in (0..frame.len()).step_by(4) {
+                let a = pixels[i + 3] as u32;
+                if a == 255 {
+                    frame[i] = pixels[i];
+                    frame[i + 1] = pixels[i + 1];
+                    frame[i + 2] = pixels[i + 2];
+                } else if a > 0 {
+                    let inv = 255 - a;
+                    frame[i] = ((pixels[i] as u32 * a + frame[i] as u32 * inv) / 255) as u8;
+                    frame[i + 1] =
+                        ((pixels[i + 1] as u32 * a + frame[i + 1] as u32 * inv) / 255) as u8;
+                    frame[i + 2] =
+                        ((pixels[i + 2] as u32 * a + frame[i + 2] as u32 * inv) / 255) as u8;
+                }
+                // a == 0: keep background as-is
+            }
         }
 
         put_pixels(
@@ -279,7 +393,16 @@ impl Backend for X11Backend {
     }
 
     fn capture_screen(&mut self) -> Result<Capture> {
-        let bgra = capture_root(&self.conn, self.root, self.screen_w, self.screen_h)?;
+        let bgra = if self.composited {
+            // Clear the overlay so the capture shows only the desktop.
+            self.frame.fill(0);
+            self.repaint()?;
+            std::thread::sleep(COMPOSITOR_SETTLE);
+            capture_root(&self.conn, self.root, self.screen_w, self.screen_h)?
+        } else {
+            // The screen shows the overlay itself; this is what it covers.
+            self.background.clone()
+        };
         Ok(Capture {
             bgra,
             w: self.screen_w,
@@ -291,10 +414,44 @@ impl Backend for X11Backend {
         self.warp_and_sync(x, y)
     }
 
+    /// When composited, empty the overlay's input shape so the pointer passes
+    /// through to the app while the overlay keeps the keyboard. Otherwise the
+    /// overlay is a still capture, so take it down for the hover and come
+    /// back over a fresh one.
+    fn hover(&mut self, x: u32, y: u32) -> Result<()> {
+        if !self.composited {
+            self.teardown()?;
+            self.warp_and_sync(x, y)?;
+            return self.reopen_after_action();
+        }
+        self.conn
+            .shape_rectangles(
+                shape::SO::SET,
+                shape::SK::INPUT,
+                ClipOrdering::UNSORTED,
+                self.window,
+                0,
+                0,
+                &[],
+            )
+            .context("clear input shape")?;
+        // X rechecks which window is under the pointer when it moves, not when
+        // the input shape changes, so go by way of the pixel next to the
+        // target in case the pointer is already on it.
+        let detour_x = if x > 0 { x - 1 } else { x + 1 };
+        self.warp_and_sync(detour_x, y)?;
+        self.warp_and_sync(x, y)
+    }
+
     fn click(&mut self, x: u32, y: u32) -> Result<()> {
         self.teardown()?;
         self.warp_and_sync(x, y)?;
         self.fake_button_click(BTN_LEFT)
+    }
+
+    fn click_stay(&mut self, x: u32, y: u32) -> Result<()> {
+        self.click(x, y)?;
+        self.reopen_after_action()
     }
 
     fn double_click(&mut self, x: u32, y: u32) -> Result<()> {
@@ -451,38 +608,30 @@ impl Backend for X11Backend {
     }
 
     fn reopen(&mut self) -> Result<()> {
-        if self.mapped {
-            return Ok(());
-        }
-        // Re-capture desktop since it may have changed after our action.
-        self.background = capture_root(&self.conn, self.root, self.screen_w, self.screen_h)?;
-        self.conn.map_window(self.window).context("remap window")?;
-        self.conn
-            .configure_window(
-                self.window,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            )
-            .context("raise window")?;
-        // Same reasoning as in `new`: let the map be processed before the
-        // caller's redraw lands on the window.
-        self.conn.sync().context("sync after remap")?;
-
-        grab_keyboard_with_retry(&self.conn, self.window).context("regrab keyboard")?;
-
-        self.mapped = true;
-        self.settle_repaint = true;
+        anyhow::ensure!(
+            self.remap()?,
+            "failed to regrab keyboard after {GRAB_ATTEMPTS} attempts"
+        );
         Ok(())
     }
 }
 
-/// Try to grab the keyboard, retrying for up to ~500 ms.
+fn grab_keyboard_with_retry(conn: &RustConnection, window: Window) -> Result<()> {
+    anyhow::ensure!(
+        try_grab_keyboard(conn, window)?,
+        "failed to grab keyboard after {GRAB_ATTEMPTS} attempts"
+    );
+    Ok(())
+}
+
+/// Try to grab the keyboard, retrying for up to ~500 ms. Returns false if
+/// another client still holds it after the last attempt.
 /// On GNOME and some other compositors the shortcut key-release event may
 /// still be in flight when we first attempt the grab, causing ALREADY_GRABBED.
-fn grab_keyboard_with_retry(conn: &RustConnection, window: Window) -> Result<()> {
-    const ATTEMPTS: u32 = 10;
+fn try_grab_keyboard(conn: &RustConnection, window: Window) -> Result<bool> {
     const DELAY_MS: u64 = 50;
 
-    for attempt in 0..ATTEMPTS {
+    for attempt in 0..GRAB_ATTEMPTS {
         if attempt > 0 {
             std::thread::sleep(Duration::from_millis(DELAY_MS));
         }
@@ -493,10 +642,10 @@ fn grab_keyboard_with_retry(conn: &RustConnection, window: Window) -> Result<()>
             .context("grab keyboard reply")?
             .status;
         if status == GrabStatus::SUCCESS {
-            return Ok(());
+            return Ok(true);
         }
     }
-    anyhow::bail!("failed to grab keyboard after {ATTEMPTS} attempts")
+    Ok(false)
 }
 
 /// Send a pixel buffer to a window via chunked put_image requests.
@@ -535,6 +684,43 @@ fn put_pixels(
         y += chunk_h;
     }
     Ok(())
+}
+
+/// The 32-bit BGRA visual for a see-through overlay, if a compositor is
+/// running to blend it and the server supports input shapes for hover.
+fn argb_visual(conn: &RustConnection, screen_num: usize) -> Result<Option<Visualid>> {
+    if conn
+        .extension_information(shape::X11_EXTENSION_NAME)
+        .context("query shape extension")?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let cm_selection = conn
+        .intern_atom(false, format!("_NET_WM_CM_S{screen_num}").as_bytes())
+        .context("intern compositor selection")?
+        .reply()
+        .context("intern compositor selection reply")?
+        .atom;
+    let owner = conn
+        .get_selection_owner(cm_selection)
+        .context("get compositor selection owner")?
+        .reply()
+        .context("get compositor selection owner reply")?
+        .owner;
+    if owner == x11rb::NONE {
+        return Ok(None);
+    }
+    Ok(conn.setup().roots[screen_num]
+        .allowed_depths
+        .iter()
+        .filter(|d| d.depth == 32)
+        .flat_map(|d| &d.visuals)
+        .find(|v| {
+            v.class == VisualClass::TRUE_COLOR
+                && (v.red_mask, v.green_mask, v.blue_mask) == (0xff0000, 0xff00, 0xff)
+        })
+        .map(|v| v.visual_id))
 }
 
 /// Capture the root window contents as a BGRA pixel buffer.
