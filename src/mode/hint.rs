@@ -53,7 +53,6 @@ pub(super) fn handle_key<B: Backend>(
         KeyEvent::TripleClick => action(backend, target, Backend::triple_click),
         KeyEvent::RightClick => action(backend, target, Backend::right_click),
         KeyEvent::MiddleClick => action(backend, target, Backend::middle_click),
-        #[cfg(target_os = "macos")]
         KeyEvent::Hover | KeyEvent::ClickStay => {
             let Some((x, y)) = target else {
                 return Ok(ModeTransition::Stay);

@@ -213,7 +213,6 @@ pub struct KeyBindings {
     pub hint: Key,
     pub free_mode: Key,
     pub click: Key,
-    #[cfg(target_os = "macos")]
     pub click_stay: Key,
     pub double_click: Key,
     pub triple_click: Key,
@@ -223,7 +222,6 @@ pub struct KeyBindings {
     pub macro_record: Key,
     pub right_click: Key,
     pub middle_click: Key,
-    #[cfg(target_os = "macos")]
     pub hover: Key,
     pub scroll_up: Key,
     pub scroll_down: Key,
@@ -239,7 +237,6 @@ impl Default for KeyBindings {
             hint: Key::Char('c'),
             free_mode: Key::Char('v'),
             click: Key::Space,
-            #[cfg(target_os = "macos")]
             click_stay: Key::Char('.'),
             double_click: Key::Enter,
             triple_click: Key::Char('m'),
@@ -249,7 +246,6 @@ impl Default for KeyBindings {
             macro_record: Key::Char('`'),
             right_click: Key::Delete,
             middle_click: Key::Insert,
-            #[cfg(target_os = "macos")]
             hover: Key::Char(','),
             scroll_up: Key::Up,
             scroll_down: Key::Down,
@@ -314,11 +310,9 @@ impl KeyBindings {
         if key == self.scroll_right {
             return Some(KeyEvent::ScrollRight);
         }
-        #[cfg(target_os = "macos")]
         if key == self.click_stay {
             return Some(KeyEvent::ClickStay);
         }
-        #[cfg(target_os = "macos")]
         if key == self.hover {
             return Some(KeyEvent::Hover);
         }

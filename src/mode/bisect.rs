@@ -44,12 +44,10 @@ pub(super) fn handle_key<B: Backend>(
             backend.middle_click(cx, cy)?;
             Ok(ModeTransition::Exit)
         }
-        #[cfg(target_os = "macos")]
         KeyEvent::Hover => {
             backend.hover(cx, cy)?;
-            Ok(ModeTransition::Stay)
+            Ok(ModeTransition::Redraw)
         }
-        #[cfg(target_os = "macos")]
         KeyEvent::ClickStay => {
             backend.click_stay(cx, cy)?;
             Ok(ModeTransition::Redraw)
