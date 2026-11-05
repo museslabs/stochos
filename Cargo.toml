@@ -31,7 +31,7 @@ nix = { version = "0.31", features = ["fs", "poll"] }
 wayland-client = { version = "0.31", optional = true }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = true }
 tempfile = { version = "3", optional = true }
-x11rb = { version = "0.13", features = ["xkb", "xtest"], optional = true }
+x11rb = { version = "0.13", features = ["shape", "xkb", "xtest"], optional = true }
 xkbcommon = { version = "0.8", optional = true }
 atspi = { version = "0.30", features = ["connection", "proxies", "zbus"] }
 futures-executor = "0.3"

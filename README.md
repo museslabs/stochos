@@ -12,7 +12,7 @@ Displays a letter grid over your screen. Type a two-key combo to jump to a cell,
 
 **X11:** Tested on **i3**. Should work on any X11 window manager with the XTest extension.
 
-**macOS:** Single-display only. Requires Accessibility permission (see Setup → macOS below). Cold-start launches dismiss Control Center / WiFi-brightness widgets; other system menus and notification center are unaffected.
+**macOS:** Single-display only. Requires Accessibility permission (see Setup → macOS below). Launching stochos closes any open menu (Control Center, menu bar menus, popups). To work inside a menu, open it from the overlay with hover (`,`) or click-and-stay (`.`), which keep the overlay up.
 
 ## Install
 
@@ -83,10 +83,12 @@ Released binaries are not codesigned with a Developer ID, so after every upgrade
 | Key | Action |
 |-----|--------|
 | Space | Click |
+| `.` | Click and keep the overlay open |
 | Enter | Double click |
 | `m`   | Triple click |
 | Delete | Right click |
 | Insert | Middle click |
+| `,` | Hover and keep the overlay open |
 | Escape | Close overlay |
 | Backspace | Undo last step |
 | Arrow keys | Scroll (up/down/left/right) |
@@ -100,6 +102,11 @@ Released binaries are not codesigned with a Developer ID, so after every upgrade
 | `v` | Switch to free mode |
 
 All keys are configurable (see Configuration below).
+
+How hover and click-and-stay behave depends on the platform:
+
+- **Wayland:** hover passes the pointer through the overlay, so the app keeps its hover state (CSS hover, tooltips) until the next click or scroll. On Hyprland before 0.57, hover hides the overlay for a moment instead, and effects that end when the pointer leaves disappear once it is back.
+- **X11:** with a compositor running (picom, for example), hover works the same as on Wayland. Without one, the overlay shows a snapshot of the screen: hover hides it for a moment so the app can react, then takes a new snapshot, so the hover state is frozen as it was then. Click-and-stay hides the overlay for the click either way. If the click opens a menu that grabs the keyboard, the overlay closes and the menu stays open.
 
 ### CLI flags
 
@@ -119,6 +126,7 @@ An alternative grid mode that recursively subdivides. Instead of two-key combos 
 - Enter bisect mode: press `b` from normal mode, or launch with `--bisect`
 - Each hint key splits the current region into a smaller grid (2x2 by default)
 - Space / Enter / `m` / Delete / Insert act (click / double-click / triple-click / right-click / middle-click) at the center of the current region and exit
+- `,` / `.` hover or click at the center of the current region and keep it selected
 - Backspace pops back up one level
 - Subdivision stops automatically once a cell would fall below `min_cell_size` pixels — the region is highlighted and you can act or back out
 - Press `n` to switch back to normal mode
@@ -129,6 +137,7 @@ An alternative mode that labels likely clickable UI targets directly, instead of
 
 - Enter hint mode: press `c` from normal, bisect, or free mode, or launch with `--hint`
 - Space / Enter / `m` / Delete / Insert act (click / double-click / triple-click / right-click / middle-click) on the selected target and exit
+- `,` / `.` hover or click the selected target, then switch to the grid. Press `c` to label the new screen
 - `/` starts a drag from the selected target; select another hint and press Space to drag
 - Backspace edits the typed hint label, or returns to the previous mode when no label is typed
 - Escape closes the overlay
@@ -152,6 +161,7 @@ An alternative mode for direct keyboard-driven cursor movement. Instead of selec
 - Move the cursor with `h` / `j` / `k` / `l` (left / down / up / right)
 - Press `=` to increase speed and `-` to decrease it; the current speed is shown in the top-left corner
 - Space / Enter / `m` / Delete / Insert act (click / double-click / triple-click / right-click / middle-click) and exit
+- `,` / `.` hover or click at the cursor and stay in free mode
 - Backspace returns to the previous mode; Escape closes the overlay
 - Key repeat is supported: hold a movement key to move continuously
 
@@ -213,12 +223,14 @@ bisect = "b"
 hint = "c"
 free_mode = "v"
 click = "space"
+click_stay = "."
 double_click = "enter"
 triple_click = "m"
 close = "escape"
 undo = "backspace"
 right_click = "delete"
 middle_click = "insert"
+hover = ","
 scroll_up = "up"
 scroll_down = "down"
 scroll_left = "left"

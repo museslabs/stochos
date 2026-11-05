@@ -44,6 +44,14 @@ pub(super) fn handle_key<B: Backend>(
             backend.middle_click(cx, cy)?;
             Ok(ModeTransition::Exit)
         }
+        KeyEvent::Hover => {
+            backend.hover(cx, cy)?;
+            Ok(ModeTransition::Redraw)
+        }
+        KeyEvent::ClickStay => {
+            backend.click_stay(cx, cy)?;
+            Ok(ModeTransition::Redraw)
+        }
         KeyEvent::ScrollUp => {
             backend.scroll_up()?;
             Ok(ModeTransition::Redraw)

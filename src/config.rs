@@ -213,6 +213,7 @@ pub struct KeyBindings {
     pub hint: Key,
     pub free_mode: Key,
     pub click: Key,
+    pub click_stay: Key,
     pub double_click: Key,
     pub triple_click: Key,
     pub close: Key,
@@ -221,6 +222,7 @@ pub struct KeyBindings {
     pub macro_record: Key,
     pub right_click: Key,
     pub middle_click: Key,
+    pub hover: Key,
     pub scroll_up: Key,
     pub scroll_down: Key,
     pub scroll_left: Key,
@@ -235,6 +237,7 @@ impl Default for KeyBindings {
             hint: Key::Char('c'),
             free_mode: Key::Char('v'),
             click: Key::Space,
+            click_stay: Key::Char('.'),
             double_click: Key::Enter,
             triple_click: Key::Char('m'),
             close: Key::Escape,
@@ -243,6 +246,7 @@ impl Default for KeyBindings {
             macro_record: Key::Char('`'),
             right_click: Key::Delete,
             middle_click: Key::Insert,
+            hover: Key::Char(','),
             scroll_up: Key::Up,
             scroll_down: Key::Down,
             scroll_left: Key::Left,
@@ -305,6 +309,12 @@ impl KeyBindings {
         }
         if key == self.scroll_right {
             return Some(KeyEvent::ScrollRight);
+        }
+        if key == self.click_stay {
+            return Some(KeyEvent::ClickStay);
+        }
+        if key == self.hover {
+            return Some(KeyEvent::Hover);
         }
         None
     }

@@ -30,6 +30,10 @@ const BTN_LEFT: u32 = 0x110;
 const BTN_RIGHT: u32 = 0x111;
 const BTN_MIDDLE: u32 = 0x112;
 
+/// How long the fallback hover keeps the overlay down. Keys pressed
+/// meanwhile go to the app, so keep it short.
+const HOVER_DWELL: Duration = Duration::from_millis(150);
+
 const REPEAT_DELAY_MS: u64 = 300;
 const REPEAT_RATE_HZ: u64 = 25;
 
@@ -78,6 +82,8 @@ impl WaylandBackend {
             current_output: None,
             held: None,
             pointer_pos: None,
+            pointer_inside: false,
+            keyboard_focus: false,
             screencopy: None,
         };
 
@@ -150,7 +156,48 @@ impl WaylandBackend {
         self.eq
             .roundtrip(&mut self.state)
             .context("roundtrip after surface destroy")?;
+        self.state.pointer_inside = false;
+        self.state.keyboard_focus = false;
         Ok(())
+    }
+
+    /// Let pointer input fall through the overlay until the next teardown.
+    fn clear_input_region(&mut self) -> Result<()> {
+        let compositor = self
+            .state
+            .compositor
+            .as_ref()
+            .context("wl_compositor not available")?;
+        let surface = self
+            .state
+            .surface
+            .as_ref()
+            .context("wl_surface not available")?;
+        let region = compositor.create_region(&self.qh, ());
+        surface.set_input_region(Some(&region));
+        region.destroy();
+        surface.commit();
+        Ok(())
+    }
+
+    /// Move to (x, y) by way of the pixel next to it. Hyprland ignores motion
+    /// to the cursor's current position, and only rechecks the surface under
+    /// the pointer on motion.
+    fn hover_motion(&mut self, x: u32, y: u32) -> Result<()> {
+        let detour_x = if x > 0 { x - 1 } else { x + 1 };
+        self.move_mouse(detour_x, y)?;
+        self.move_mouse(x, y)?;
+        self.eq
+            .roundtrip(&mut self.state)
+            .context("roundtrip after hover motion")?;
+        Ok(())
+    }
+
+    /// Bring the overlay back after a hover or click that keeps it open.
+    fn reopen_after_action(&mut self) -> Result<()> {
+        // The key's release may have gone to the app while we were down.
+        self.state.held = None;
+        self.reopen()
     }
 
     fn present_empty(&mut self) -> Result<()> {
@@ -283,9 +330,29 @@ impl Backend for WaylandBackend {
         if let Some(vp) = &self.state.vp {
             vp.motion_absolute(timestamp(), x, y, self.state.screen_w, self.state.screen_h);
             vp.frame();
+            // No motion events reach us once the pointer passes through.
+            self.state.pointer_pos = Some((x, y));
         }
         self.state.conn.flush().context("flush after move_mouse")?;
         Ok(())
+    }
+
+    /// Pass the pointer through the overlay so the app beneath keeps its hover
+    /// state while the overlay keeps the keyboard. Compositors that keep the
+    /// pointer on the overlay anyway (Hyprland before 0.57) get the overlay
+    /// taken down for a moment instead.
+    fn hover(&mut self, x: u32, y: u32) -> Result<()> {
+        self.state.held = None;
+        self.clear_input_region()?;
+        self.hover_motion(x, y)?;
+        if !self.state.pointer_inside && self.state.keyboard_focus {
+            return Ok(());
+        }
+
+        self.teardown_surface()?;
+        self.hover_motion(x, y)?;
+        std::thread::sleep(HOVER_DWELL);
+        self.reopen_after_action()
     }
 
     /// Destroy the overlay so the compositor removes it from the surface stack,
@@ -312,6 +379,11 @@ impl Backend for WaylandBackend {
             .roundtrip(&mut self.state)
             .context("roundtrip after click")?;
         Ok(())
+    }
+
+    fn click_stay(&mut self, x: u32, y: u32) -> Result<()> {
+        self.click(x, y)?;
+        self.reopen_after_action()
     }
 
     fn double_click(&mut self, x: u32, y: u32) -> Result<()> {
@@ -587,6 +659,8 @@ struct WaylandState {
     current_output: Option<wl_output::WlOutput>,
     held: Option<HeldKey>,
     pointer_pos: Option<(u32, u32)>,
+    pointer_inside: bool,
+    keyboard_focus: bool,
     screencopy: Option<ScreencopyState>,
 }
 
@@ -850,8 +924,12 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
                 }
                 _ => {}
             },
+            wl_keyboard::Event::Enter { .. } => {
+                state.keyboard_focus = true;
+            }
             // Focus loss: drop any held key so repeats don't fire in the background.
             wl_keyboard::Event::Leave { .. } => {
+                state.keyboard_focus = false;
                 state.held = None;
             }
             _ => {}
@@ -967,13 +1045,19 @@ impl Dispatch<wl_pointer::WlPointer, ()> for WaylandState {
                 surface_x,
                 surface_y,
                 ..
+            } => {
+                state.pointer_inside = true;
+                state.pointer_pos = Some((surface_x.round() as u32, surface_y.round() as u32));
             }
-            | wl_pointer::Event::Motion {
+            wl_pointer::Event::Motion {
                 surface_x,
                 surface_y,
                 ..
             } => {
                 state.pointer_pos = Some((surface_x.round() as u32, surface_y.round() as u32));
+            }
+            wl_pointer::Event::Leave { .. } => {
+                state.pointer_inside = false;
             }
             _ => {}
         }

@@ -59,6 +59,20 @@ pub(super) fn handle_key<B: Backend>(
             }
             Ok(ModeTransition::Exit)
         }
+        KeyEvent::Hover | KeyEvent::ClickStay if drag_origin.is_none() => {
+            let Some((x, y)) = target else {
+                return Ok(ModeTransition::Stay);
+            };
+            match key {
+                KeyEvent::Hover => backend.hover(x, y)?,
+                _ => backend.click_stay(x, y)?,
+            }
+            Ok(ModeTransition::Enter(Mode::Normal {
+                input_state: InputState::First,
+                target: None,
+                drag_origin: None,
+            }))
+        }
         KeyEvent::Char('/')
             if matches!(
                 input_state,

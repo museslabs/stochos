@@ -9,10 +9,12 @@ pub enum KeyEvent {
     FreeMode,
     Char(char),
     Click,
+    ClickStay,
     DoubleClick,
     TripleClick,
     RightClick,
     MiddleClick,
+    Hover,
     Close,
     Undo,
     MacroMenu,
@@ -56,8 +58,14 @@ pub trait Backend {
     /// Move the mouse pointer to an absolute position.
     fn move_mouse(&mut self, x: u32, y: u32) -> Result<()>;
 
+    /// Hover at (x, y) and leave the overlay up afterwards.
+    fn hover(&mut self, x: u32, y: u32) -> Result<()>;
+
     /// Tear down the overlay, click at (x, y), then return.
     fn click(&mut self, x: u32, y: u32) -> Result<()>;
+
+    /// Click at (x, y) and leave the overlay up afterwards.
+    fn click_stay(&mut self, x: u32, y: u32) -> Result<()>;
 
     /// Tear down the overlay, double click at (x, y), then return.
     fn double_click(&mut self, x: u32, y: u32) -> Result<()>;
