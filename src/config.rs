@@ -389,16 +389,19 @@ mod from_hex {
             color[2], color[1], color[0], color[3]
         ))
     }
-    ///Deserialize from #RRGGBBAA  to [BB,GG,RR,AA]
+    ///Deserialize from #RRGGBB or #RRGGBBAA to [BB,GG,RR,AA]
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<[u8; 4], D::Error> {
         let s = String::deserialize(deserializer)?;
         let hex = s.trim_start_matches("#");
-        let rgba = match hex.len() {
-            6 => u32::from_str_radix(hex, 16)
-                .map(|a| a << 8)
-                .unwrap_or_default(),
-            8 => u32::from_str_radix(hex, 16).unwrap_or_default(),
-            _ => 0,
+        let digits = hex.bytes().all(|b| b.is_ascii_hexdigit());
+        let rgba = match (hex.len(), u32::from_str_radix(hex, 16)) {
+            (6, Ok(rgb)) if digits => (rgb << 8) | 0xFF,
+            (8, Ok(rgba)) if digits => rgba,
+            _ => {
+                return Err(serde::de::Error::custom(format!(
+                    "invalid color {s:?}, expected #RRGGBB or #RRGGBBAA"
+                )))
+            }
         };
         Ok([
             ((rgba & 0x0000FF00) >> 8) as u8,
@@ -710,4 +713,22 @@ fn config_path() -> PathBuf {
         })
         .join("stochos")
         .join("config.toml")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_round_trips() {
+        let toml = Config::default_toml().unwrap();
+        let parsed: Config = toml::from_str(&toml).unwrap();
+        assert_eq!(toml::to_string_pretty(&parsed).unwrap(), toml);
+    }
+
+    #[test]
+    fn six_digit_color_is_opaque() {
+        let config: Config = toml::from_str("[colors]\nborder = \"#ff8800\"\n").unwrap();
+        assert_eq!(config.colors.border, [0x00, 0x88, 0xFF, 0xFF]);
+    }
 }
