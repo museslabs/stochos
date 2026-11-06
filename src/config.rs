@@ -1,3 +1,4 @@
+use anyhow::Context;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -7,8 +8,15 @@ use crate::backend::KeyEvent;
 static CONFIG: OnceLock<Config> = OnceLock::new();
 const SCALE_RANGE: std::ops::RangeInclusive<u32> = 1..=10;
 
-pub fn init() {
-    CONFIG.set(Config::load()).ok();
+/// Falls back to the default config when the file can't be loaded, and
+/// returns the error so the caller can show it.
+pub fn init() -> anyhow::Result<()> {
+    let (config, result) = match Config::load() {
+        Ok(config) => (config, Ok(())),
+        Err(e) => (Config::default(), Err(e)),
+    };
+    let _ = CONFIG.set(config);
+    result
 }
 
 pub fn config() -> &'static Config {
@@ -590,20 +598,20 @@ impl Config {
         Ok(toml::to_string_pretty(&Config::default())?)
     }
 
-    fn load() -> Self {
+    fn load() -> anyhow::Result<Self> {
         let path = config_path();
         match std::fs::read_to_string(&path) {
-            Ok(data) => toml::from_str(&data).unwrap_or_default(),
+            Ok(data) => toml::from_str(&data)
+                .with_context(|| format!("Failed to parse config at {}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let config = Config::default();
                 if let Err(e) = write_default(&path, &config) {
                     eprintln!("Failed to write default config to {}: {e}", path.display());
                 }
-                config
+                Ok(config)
             }
             Err(e) => {
-                eprintln!("Failed to read config at {}: {e}", path.display());
-                Config::default()
+                Err(e).with_context(|| format!("Failed to read config at {}", path.display()))
             }
         }
     }
