@@ -356,7 +356,7 @@ mod probe {
             "XDG_CONFIG_HOME",
             std::env::temp_dir().join("stochos-cv-probe"),
         );
-        crate::config::init();
+        crate::config::init().expect("load config");
         let (bgra, w, h) = read_ppm(&path);
         let start = std::time::Instant::now();
         let candidates = detect_candidates_cv(&bgra, w, h).expect("cv detection");

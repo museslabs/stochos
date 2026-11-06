@@ -1,9 +1,10 @@
-use crate::backend::Backend;
+use crate::backend::{Backend, KeyEvent};
 use crate::config::config;
 use crate::hint::build_hint_mode;
 use crate::input::InputState;
 use crate::macro_store::MacroStore;
 use crate::mode::{Mode, ModeTransition};
+use crate::render::render_config_error;
 
 #[derive(Clone, Copy)]
 pub enum InitialMode {
@@ -14,9 +15,25 @@ pub enum InitialMode {
     FreeCenter,
 }
 
-pub fn run<B: Backend>(backend: &mut B, initial: InitialMode) -> anyhow::Result<()> {
+pub fn run<B: Backend>(
+    backend: &mut B,
+    initial: InitialMode,
+    config_error: Option<anyhow::Error>,
+) -> anyhow::Result<()> {
     let (w, h) = backend.screen_size();
     let mut pixels = vec![0u8; (w * h * 4) as usize];
+
+    if let Some(error) = config_error {
+        render_config_error(&mut pixels, w, h, &error);
+        backend.present(&pixels, w, h)?;
+        while let Some(key) = backend.next_key()? {
+            if matches!(key, KeyEvent::Close | KeyEvent::DoubleClick) {
+                return backend.exit();
+            }
+        }
+        return Ok(());
+    }
+
     let mut macro_store = MacroStore::load();
     let mut transition_stack: Vec<Mode> = Vec::new();
     let mut mode = match initial {

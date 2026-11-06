@@ -54,27 +54,27 @@ fn main() -> anyhow::Result<()> {
 
     let _lock = acquire_lock(args.allow_multiple)?; // keep lock alive
 
-    config::init();
+    let config_error = config::init().inspect_err(|e| eprintln!("{e:?}")).err();
 
     let initial = args.initial_mode();
 
     #[cfg(all(feature = "wayland", target_os = "linux"))]
     if std::env::var_os("WAYLAND_DISPLAY").is_some() {
         if let Ok(mut b) = backend::wayland::WaylandBackend::new() {
-            return app::run(&mut b, initial);
+            return app::run(&mut b, initial, config_error);
         }
     }
 
     #[cfg(all(feature = "x11", target_os = "linux"))]
     if std::env::var_os("DISPLAY").is_some() {
         let mut b = backend::x11::X11Backend::new()?;
-        return app::run(&mut b, initial);
+        return app::run(&mut b, initial, config_error);
     }
 
     #[cfg(target_os = "macos")]
     {
         let mut b = backend::macos::MacosBackend::new()?;
-        return app::run(&mut b, initial);
+        return app::run(&mut b, initial, config_error);
     }
 
     #[cfg(not(target_os = "macos"))]

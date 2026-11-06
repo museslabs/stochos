@@ -573,6 +573,34 @@ pub fn render_macro_replay_wait(buf: &mut [u8], w: u32, h: u32) {
         .text(b"escape to cancel", colors.text_grey);
 }
 
+pub fn render_config_error(buf: &mut [u8], w: u32, h: u32, error: &anyhow::Error) {
+    let colors = &config().colors;
+    let text = error
+        .chain()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let lines: Vec<Vec<u8>> = text
+        .lines()
+        .map(|l| {
+            l.chars()
+                .map(|c| if c.is_ascii() { c as u8 } else { b'?' })
+                .collect()
+        })
+        .collect();
+    let cols = lines.iter().map(|l| l.len()).max().unwrap_or(0) as u32;
+    let mut p = Panel::with_cols(buf, w, h, lines.len() as u32 + 3, cols);
+    for (i, line) in lines.iter().enumerate() {
+        let color = if i == 0 {
+            colors.text_first
+        } else {
+            colors.text_white
+        };
+        p.text(line, color);
+    }
+    p.skip().text(b"escape to close", colors.text_grey);
+}
+
 pub fn render_macro_search(
     buf: &mut [u8],
     w: u32,
@@ -620,6 +648,9 @@ impl<'a> Canvas<'a> {
     }
 
     fn draw_glyph(&mut self, x: u32, y: u32, ch: char, color: [u8; 4], scale: u32) {
+        if x + 8 * scale > self.w {
+            return;
+        }
         let glyph = font8x8::BASIC_FONTS.get(ch).unwrap_or([0u8; 8]);
         let x_end_bytes = (x + 8 * scale) as usize * 4;
         for (row, &bits) in glyph.iter().enumerate() {
@@ -656,6 +687,7 @@ impl<'a> Canvas<'a> {
 /// Wraps a Canvas with layout tracking for centered popup panels.
 /// `rows` is the number of line-slots the content uses plus one for bottom
 /// breathing room; `panel_h = rows * line_height(scale) + 32` (clamped to screen height).
+/// `cols` is the minimum text width in characters, 30 for `new`.
 struct Panel<'a> {
     c: Canvas<'a>,
     tx: u32, // left edge of text column
@@ -667,15 +699,18 @@ struct Panel<'a> {
 
 impl<'a> Panel<'a> {
     fn new(buf: &'a mut [u8], w: u32, h: u32, rows: u32) -> Self {
+        Self::with_cols(buf, w, h, rows, 30)
+    }
+
+    fn with_cols(buf: &'a mut [u8], w: u32, h: u32, rows: u32, cols: u32) -> Self {
         let cfg = config();
         let mut c = Canvas { buf, w };
         c.clear();
         let scale = cfg.panel_font_size();
         let lh = line_height(scale);
         let panel_h = (rows * lh + 32).min(h.saturating_sub(4));
-        let min_panel_chars = 30;
         let panel_padding = 16 * scale;
-        let panel_min_w = min_panel_chars * char_width(scale) + panel_padding * 2;
+        let panel_min_w = cols * char_width(scale) + panel_padding * 2;
         let panel_w = (w * 30 / 100).max(panel_min_w).min(w);
         let panel_x = (w.saturating_sub(panel_w)) / 2;
         let panel_y = (h.saturating_sub(panel_h)) / 2;
