@@ -72,17 +72,11 @@ pub(super) fn handle_key<B: Backend>(
                 drag_origin: None,
             }))
         }
-        KeyEvent::Char('/') => {
-            if let Some((x, y)) = target {
-                Ok(ModeTransition::Enter(Mode::Normal {
-                    input_state: crate::input::InputState::First,
-                    target: None,
-                    drag_origin: Some((x, y)),
-                }))
-            } else {
-                Ok(ModeTransition::Stay)
-            }
-        }
+        KeyEvent::Char('/') if target.is_some() => Ok(ModeTransition::Enter(Mode::Normal {
+            input_state: crate::input::InputState::First,
+            target: None,
+            drag_origin: target,
+        })),
         KeyEvent::Char(ch) if config().hint_alphabet().contains(ch) => {
             let mut next_typed = typed.to_vec();
             next_typed.push(*ch);
