@@ -5,7 +5,7 @@ use crate::{
     config::config,
     input::InputState,
     macro_store::{MacroAction, MacroActionKind},
-    mode::{draw_grid, move_to_column_center, Mode, ModeTransition},
+    mode::{as_letter, draw_grid, grid_letters, move_to_column_center, Mode, ModeTransition},
 };
 
 fn elapsed_ms(last: Option<Instant>, now: Instant) -> u64 {
@@ -26,6 +26,7 @@ pub(super) fn handle_key<B: Backend>(
     drag_start_keys: &str,
     last_action_at: Option<Instant>,
 ) -> anyhow::Result<ModeTransition> {
+    let key = &as_letter(key, grid_letters(input_state, height));
     match key {
         KeyEvent::Undo => Ok(ModeTransition::Back),
         KeyEvent::MacroRecord => {

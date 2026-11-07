@@ -3,10 +3,10 @@ use anyhow::Ok;
 
 use crate::{
     backend::{Backend, KeyEvent},
-    config::{config, Key},
+    config::config,
     input::InputState,
     macro_store::{MacroAction, MacroActionKind},
-    mode::{draw_grid, move_to_column_center, ModeTransition},
+    mode::{as_letter, draw_grid, grid_letters, move_to_column_center, ModeTransition},
 };
 
 pub(super) fn handle_key<B: Backend>(
@@ -18,6 +18,7 @@ pub(super) fn handle_key<B: Backend>(
     target: Option<(u32, u32)>,
     drag_origin: Option<(u32, u32)>,
 ) -> anyhow::Result<ModeTransition> {
+    let key = &as_letter(key, grid_letters(input_state, height));
     match key {
         KeyEvent::Close => Ok(ModeTransition::Exit),
         KeyEvent::Undo => Ok(ModeTransition::Back),
@@ -104,26 +105,6 @@ pub(super) fn handle_key<B: Backend>(
             }))
         }
         KeyEvent::FreeMode => {
-            let cfg = config();
-            if collides_with_hint(
-                cfg.keys.free_mode,
-                input_state,
-                cfg.hints(),
-                cfg.sub_hints(),
-            ) {
-                if let Key::Char(ch) = cfg.keys.free_mode {
-                    return handle_key(
-                        width,
-                        height,
-                        &KeyEvent::Char(ch),
-                        backend,
-                        input_state,
-                        target,
-                        drag_origin,
-                    );
-                }
-            }
-
             let (x, y) = if let Some((x, y)) = target {
                 (x, y)
             } else {
@@ -136,23 +117,7 @@ pub(super) fn handle_key<B: Backend>(
                 speed: config().free.base_speed.max(1),
             }))
         }
-        KeyEvent::Hint => {
-            let cfg = config();
-            if collides_with_hint(cfg.keys.hint, input_state, cfg.hints(), cfg.sub_hints()) {
-                if let Key::Char(ch) = cfg.keys.hint {
-                    return handle_key(
-                        width,
-                        height,
-                        &KeyEvent::Char(ch),
-                        backend,
-                        input_state,
-                        target,
-                        drag_origin,
-                    );
-                }
-            }
-            Ok(super::hint::enter(backend, width, height))
-        }
+        KeyEvent::Hint => Ok(super::hint::enter(backend, width, height)),
         KeyEvent::Char(ch)
             if config().hints().contains(ch)
                 || (matches!(input_state, InputState::SubFirst { .. })
@@ -262,25 +227,9 @@ pub(super) fn handle_key<B: Backend>(
             backend.scroll_right()?;
             Ok(ModeTransition::Redraw)
         }
-        KeyEvent::Bisect => {
-            let cfg = config();
-            if collides_with_hint(cfg.keys.bisect, input_state, cfg.hints(), cfg.sub_hints()) {
-                if let Key::Char(ch) = cfg.keys.bisect {
-                    return handle_key(
-                        width,
-                        height,
-                        &KeyEvent::Char(ch),
-                        backend,
-                        input_state,
-                        target,
-                        drag_origin,
-                    );
-                }
-            }
-            Ok(ModeTransition::Enter(Mode::Bisect {
-                region: (0, 0, width, height),
-            }))
-        }
+        KeyEvent::Bisect => Ok(ModeTransition::Enter(Mode::Bisect {
+            region: (0, 0, width, height),
+        })),
         _ => Ok(ModeTransition::Stay),
     }
 }
@@ -294,20 +243,4 @@ pub(super) fn draw<B: Backend>(
     dragging: bool,
 ) -> anyhow::Result<()> {
     draw_grid(pixels, width, height, input_state, dragging, false, backend)
-}
-
-fn collides_with_hint(
-    key: Key,
-    input_state: &InputState,
-    hints: &[char],
-    sub_hints: &[char],
-) -> bool {
-    let Key::Char(ch) = key else {
-        return false;
-    };
-    match input_state {
-        InputState::Second(_) => hints.contains(&ch),
-        InputState::SubFirst { .. } => sub_hints.contains(&ch),
-        InputState::First | InputState::Ready { .. } => false,
-    }
 }

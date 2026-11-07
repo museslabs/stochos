@@ -4,7 +4,7 @@ use crate::{
     backend::{Backend, KeyEvent},
     config::config,
     hint::{build_hint_mode, label_starts_with, HintElement},
-    mode::{Mode, ModeTransition},
+    mode::{as_letter, Mode, ModeTransition},
     render::render_hints,
 };
 
@@ -33,6 +33,11 @@ pub(super) fn handle_key<B: Backend>(
     typed: &[char],
     target: Option<(u32, u32)>,
 ) -> anyhow::Result<ModeTransition> {
+    // Once a label is picked no letter can follow it, so the bindings act.
+    let key = &match target {
+        None => as_letter(key, config().hint_alphabet()),
+        Some(_) => *key,
+    };
     match key {
         KeyEvent::Close => Ok(ModeTransition::Exit),
         KeyEvent::Undo => {
@@ -67,17 +72,11 @@ pub(super) fn handle_key<B: Backend>(
                 drag_origin: None,
             }))
         }
-        KeyEvent::Char('/') => {
-            if let Some((x, y)) = target {
-                Ok(ModeTransition::Enter(Mode::Normal {
-                    input_state: crate::input::InputState::First,
-                    target: None,
-                    drag_origin: Some((x, y)),
-                }))
-            } else {
-                Ok(ModeTransition::Stay)
-            }
-        }
+        KeyEvent::Char('/') if target.is_some() => Ok(ModeTransition::Enter(Mode::Normal {
+            input_state: crate::input::InputState::First,
+            target: None,
+            drag_origin: target,
+        })),
         KeyEvent::Char(ch) if config().hint_alphabet().contains(ch) => {
             let mut next_typed = typed.to_vec();
             next_typed.push(*ch);

@@ -1,5 +1,6 @@
 use crate::{
     backend::{Backend, KeyEvent},
+    config::config,
     input::InputState,
     macro_store::MacroAction,
     mode::{Mode, ModeTransition},
@@ -22,12 +23,16 @@ pub(super) fn handle_key(
             name: Vec::new(),
             actions: actions.to_vec(),
         })),
-        KeyEvent::Char(ch) => Ok(ModeTransition::Enter(Mode::MacroName {
-            bind_key: Some(*ch),
-            name: Vec::new(),
-            actions: actions.to_vec(),
-        })),
-        _ => Ok(ModeTransition::Stay),
+        _ => {
+            let Some(ch) = config().keys.char_of(key) else {
+                return Ok(ModeTransition::Stay);
+            };
+            Ok(ModeTransition::Enter(Mode::MacroName {
+                bind_key: Some(ch),
+                name: Vec::new(),
+                actions: actions.to_vec(),
+            }))
+        }
     }
 }
 
