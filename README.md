@@ -87,7 +87,7 @@ Released binaries are not codesigned with a Developer ID, so after every upgrade
 | Enter | Double click |
 | `m`   | Triple click |
 | Delete | Right click |
-| Insert | Middle click |
+| `\` | Middle click |
 | `,` | Hover and keep the overlay open |
 | Escape | Close overlay |
 | Backspace | Undo last step |
@@ -125,7 +125,7 @@ An alternative grid mode that recursively subdivides. Instead of two-key combos 
 
 - Enter bisect mode: press `b` from normal mode, or launch with `--bisect`
 - Each hint key splits the current region into a smaller grid (2x2 by default)
-- Space / Enter / `m` / Delete / Insert act (click / double-click / triple-click / right-click / middle-click) at the center of the current region and exit
+- Space / Enter / `m` / Delete / `\` act (click / double-click / triple-click / right-click / middle-click) at the center of the current region and exit
 - `,` / `.` hover or click at the center of the current region and keep it selected
 - Backspace pops back up one level
 - Subdivision stops automatically once a cell would fall below `min_cell_size` pixels — the region is highlighted and you can act or back out
@@ -136,7 +136,7 @@ An alternative grid mode that recursively subdivides. Instead of two-key combos 
 An alternative mode that labels likely clickable UI targets directly, instead of asking you to navigate a grid. Type the label shown on a target, then perform an action.
 
 - Enter hint mode: press `c` from normal, bisect, or free mode, or launch with `--hint`
-- Space / Enter / `m` / Delete / Insert act (click / double-click / triple-click / right-click / middle-click) on the selected target and exit
+- Space / Enter / `m` / Delete / `\` act (click / double-click / triple-click / right-click / middle-click) on the selected target and exit
 - `,` / `.` hover or click the selected target, then switch to the grid. Press `c` to label the new screen
 - `/` starts a drag from the selected target; select another hint and press Space to drag
 - Backspace edits the typed hint label, or returns to the previous mode when no label is typed
@@ -160,7 +160,7 @@ An alternative mode for direct keyboard-driven cursor movement. Instead of selec
 - Enter free mode: press `v` from normal or bisect mode, or launch with `--free` (starts at mouse position) or `--free-center` (starts at screen center)
 - Move the cursor with `h` / `j` / `k` / `l` (left / down / up / right)
 - Press `=` to increase speed and `-` to decrease it; the current speed is shown in the top-left corner
-- Space / Enter / `m` / Delete / Insert act (click / double-click / triple-click / right-click / middle-click) and exit
+- Space / Enter / `m` / Delete / `\` act (click / double-click / triple-click / right-click / middle-click) and exit
 - `,` / `.` hover or click at the cursor and stay in free mode
 - Backspace returns to the previous mode; Escape closes the overlay
 - Key repeat is supported: hold a movement key to move continuously
@@ -229,7 +229,7 @@ triple_click = "m"
 close = "escape"
 undo = "backspace"
 right_click = "delete"
-middle_click = "insert"
+middle_click = '\'
 hover = ","
 scroll_up = "up"
 scroll_down = "down"
@@ -345,3 +345,5 @@ Special keys use snake_case names:
 | `num_pad_add` `num_pad_subtract` `num_pad_multiply` `num_pad_divide` `num_pad_decimal` `num_pad_enter` | Numpad operators |
 
 Shifted characters work too: `"@"`, `"!"`, `"~"`, `"A"` (uppercase), etc.
+
+On macOS, `left_control`, `right_control`, `left_alt`, `right_alt`, `caps_lock`, `num_lock`, `scroll_lock`, `print_screen`, `pause`, and `num_pad_enter` can't be bound. Apple keyboards have no Insert key. If your config still has `middle_click = "insert"` from an earlier version, change it to `middle_click = '\'`.
