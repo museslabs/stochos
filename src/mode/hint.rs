@@ -4,7 +4,7 @@ use crate::{
     backend::{Backend, KeyEvent},
     config::config,
     hint::{build_hint_mode, label_starts_with, HintElement},
-    mode::{Mode, ModeTransition},
+    mode::{as_letter, Mode, ModeTransition},
     render::render_hints,
 };
 
@@ -33,6 +33,11 @@ pub(super) fn handle_key<B: Backend>(
     typed: &[char],
     target: Option<(u32, u32)>,
 ) -> anyhow::Result<ModeTransition> {
+    // Once a label is picked no letter can follow it, so the bindings act.
+    let key = &match target {
+        None => as_letter(key, config().hint_alphabet()),
+        Some(_) => *key,
+    };
     match key {
         KeyEvent::Close => Ok(ModeTransition::Exit),
         KeyEvent::Undo => {
