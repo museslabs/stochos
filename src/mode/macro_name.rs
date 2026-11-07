@@ -1,5 +1,6 @@
 use crate::{
     backend::{Backend, KeyEvent},
+    config::config,
     input::InputState,
     macro_store::{MacroAction, MacroEntry, MacroStore},
     mode::{Mode, ModeTransition},
@@ -46,15 +47,6 @@ pub(super) fn handle_key(
                 actions: actions.to_vec(),
             }))
         }
-        KeyEvent::Char(ch) => {
-            let mut name = name.to_vec();
-            name.push(*ch);
-            Ok(ModeTransition::Enter(Mode::MacroName {
-                bind_key,
-                name,
-                actions: actions.to_vec(),
-            }))
-        }
         KeyEvent::Click => {
             let mut name = name.to_vec();
             name.push(' ');
@@ -64,7 +56,18 @@ pub(super) fn handle_key(
                 actions: actions.to_vec(),
             }))
         }
-        _ => Ok(ModeTransition::Stay),
+        _ => {
+            let Some(ch) = config().keys.char_of(key) else {
+                return Ok(ModeTransition::Stay);
+            };
+            let mut name = name.to_vec();
+            name.push(ch);
+            Ok(ModeTransition::Enter(Mode::MacroName {
+                bind_key,
+                name,
+                actions: actions.to_vec(),
+            }))
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::{
     backend::{Backend, KeyEvent},
+    config::config,
     input::InputState,
     macro_store::MacroStore,
     mode::{replay_macro, Mode, ModeTransition},
@@ -54,14 +55,6 @@ pub(super) fn handle_key<B: Backend>(
                 selected: 0,
             }))
         }
-        KeyEvent::Char(ch) => {
-            let mut query = query.to_vec();
-            query.push(*ch);
-            Ok(ModeTransition::Enter(Mode::MacroSearch {
-                query,
-                selected: 0,
-            }))
-        }
         KeyEvent::Click => {
             let mut query = query.to_vec();
             query.push(' ');
@@ -70,7 +63,17 @@ pub(super) fn handle_key<B: Backend>(
                 selected: 0,
             }))
         }
-        _ => Ok(ModeTransition::Stay),
+        _ => {
+            let Some(ch) = config().keys.char_of(key) else {
+                return Ok(ModeTransition::Stay);
+            };
+            let mut query = query.to_vec();
+            query.push(ch);
+            Ok(ModeTransition::Enter(Mode::MacroSearch {
+                query,
+                selected: 0,
+            }))
+        }
     }
 }
 
