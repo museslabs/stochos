@@ -1020,6 +1020,7 @@ mod vk {
     pub const UP_ARROW: u16 = 0x7E;
 
     pub const CAPS_LOCK: u16 = 0x39;
+    pub const CONTEXTUAL_MENU: u16 = 0x6E;
 
     pub const KEYPAD_0: u16 = 0x52;
     pub const KEYPAD_1: u16 = 0x53;
@@ -1068,6 +1069,7 @@ fn vk_to_key(kc: u16) -> Option<Key> {
         vk::F11 => Key::F11,
         vk::F12 => Key::F12,
         vk::CAPS_LOCK => Key::CapsLock,
+        vk::CONTEXTUAL_MENU => Key::ContextMenu,
         vk::KEYPAD_0 => Key::NumPad0,
         vk::KEYPAD_1 => Key::NumPad1,
         vk::KEYPAD_2 => Key::NumPad2,
