@@ -993,6 +993,8 @@ mod vk {
     pub const DELETE: u16 = 0x33;
     pub const ESCAPE: u16 = 0x35;
     pub const KEYPAD_ENTER: u16 = 0x4C;
+    /// What a PC keyboard's Insert key sends.
+    pub const HELP: u16 = 0x72;
 
     pub const F1: u16 = 0x7A;
     pub const F2: u16 = 0x78;
@@ -1043,6 +1045,7 @@ fn vk_to_key(kc: u16) -> Option<Key> {
         vk::SPACE => Key::Space,
         vk::DELETE => Key::Backspace,
         vk::ESCAPE => Key::Escape,
+        vk::HELP => Key::Insert,
         vk::FORWARD_DELETE => Key::Delete,
         vk::HOME => Key::Home,
         vk::END => Key::End,
