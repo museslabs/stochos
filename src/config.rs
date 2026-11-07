@@ -29,12 +29,6 @@ fn clamp_scale(scale: u32) -> u32 {
 
 /// Platform-agnostic key representation.
 /// Each backend maps its native keycodes to these values.
-// TODO: platform-aware config validation. On macOS the backend can't deliver
-// modifier-only keys (Left/RightControl, Left/RightAlt  would require a
-// kCGEventFlagsChanged path) or keys absent from Apple keyboards (Insert,
-// PrintScreen, Pause, ContextMenu, NumLock, ScrollLock), and NumPadEnter
-// collapses into Enter. Bindings to those values silently no-op today;
-// reject them at load with a clear error per platform.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     Char(char),
@@ -175,6 +169,15 @@ impl<'de> Deserialize<'de> for Key {
         let s = String::deserialize(d)?;
         for &(name, key) in SPECIAL_KEYS {
             if s == name {
+                #[cfg(target_os = "macos")]
+                if let Some((_, why)) = crate::backend::UNBINDABLE_KEYS
+                    .iter()
+                    .find(|&&(k, _)| k == key)
+                {
+                    return Err(serde::de::Error::custom(format!(
+                        "{s:?} can't be bound: {why}"
+                    )));
+                }
                 return Ok(key);
             }
         }
@@ -730,5 +733,19 @@ mod tests {
     fn six_digit_color_is_opaque() {
         let config: Config = toml::from_str("[colors]\nborder = \"#ff8800\"\n").unwrap();
         assert_eq!(config.colors.border, [0x00, 0x88, 0xFF, 0xFF]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unbindable_keys_are_rejected_by_name() {
+        for &(key, why) in crate::backend::UNBINDABLE_KEYS {
+            let (name, _) = SPECIAL_KEYS.iter().find(|&&(_, k)| k == key).unwrap();
+            let toml = format!("[keys]\nmiddle_click = \"{name}\"\n");
+            let err = toml::from_str::<Config>(&toml).unwrap_err().to_string();
+            assert!(
+                err.contains(&format!("\"{name}\" can't be bound: {why}")),
+                "{err}"
+            );
+        }
     }
 }

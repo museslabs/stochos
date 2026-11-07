@@ -345,3 +345,5 @@ Special keys use snake_case names:
 | `num_pad_add` `num_pad_subtract` `num_pad_multiply` `num_pad_divide` `num_pad_decimal` `num_pad_enter` | Numpad operators |
 
 Shifted characters work too: `"@"`, `"!"`, `"~"`, `"A"` (uppercase), etc.
+
+On macOS, `left_control`, `right_control`, `left_alt`, `right_alt`, `caps_lock`, `num_lock`, `scroll_lock`, `print_screen`, `pause`, and `num_pad_enter` can't be bound.

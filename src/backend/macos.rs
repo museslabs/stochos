@@ -1019,7 +1019,6 @@ mod vk {
     pub const DOWN_ARROW: u16 = 0x7D;
     pub const UP_ARROW: u16 = 0x7E;
 
-    pub const CAPS_LOCK: u16 = 0x39;
     pub const CONTEXTUAL_MENU: u16 = 0x6E;
 
     pub const KEYPAD_0: u16 = 0x52;
@@ -1038,6 +1037,20 @@ mod vk {
     pub const KEYPAD_DIVIDE: u16 = 0x4B;
     pub const KEYPAD_DECIMAL: u16 = 0x41;
 }
+
+/// Keys `vk_to_key` never returns.
+pub const UNBINDABLE_KEYS: &[(Key, &str)] = &[
+    (Key::PrintScreen, "Print Screen isn't mapped on macOS"),
+    (Key::Pause, "Pause isn't mapped on macOS"),
+    (Key::NumLock, "Num Lock isn't mapped on macOS"),
+    (Key::ScrollLock, "Scroll Lock isn't mapped on macOS"),
+    (Key::LeftControl, "Control alone isn't read on macOS"),
+    (Key::RightControl, "Control alone isn't read on macOS"),
+    (Key::LeftAlt, "Alt alone isn't read on macOS"),
+    (Key::RightAlt, "Alt alone isn't read on macOS"),
+    (Key::CapsLock, "Caps Lock isn't read on macOS"),
+    (Key::NumPadEnter, "keypad Enter is mapped to enter on macOS"),
+];
 
 fn vk_to_key(kc: u16) -> Option<Key> {
     Some(match kc {
@@ -1068,7 +1081,6 @@ fn vk_to_key(kc: u16) -> Option<Key> {
         vk::F10 => Key::F10,
         vk::F11 => Key::F11,
         vk::F12 => Key::F12,
-        vk::CAPS_LOCK => Key::CapsLock,
         vk::CONTEXTUAL_MENU => Key::ContextMenu,
         vk::KEYPAD_0 => Key::NumPad0,
         vk::KEYPAD_1 => Key::NumPad1,
