@@ -2,7 +2,7 @@ use crate::{
     backend::{Backend, KeyEvent},
     config::config,
     input::InputState,
-    mode::{Mode, ModeTransition},
+    mode::{as_letter, Mode, ModeTransition},
     render::render_bisect,
 };
 
@@ -21,6 +21,11 @@ pub(super) fn handle_key<B: Backend>(
     let (rx, ry, rw, rh) = region;
     let cx = rx + rw / 2;
     let cy = ry + rh / 2;
+    let cfg = &config().bisect;
+    let rows = cfg.rows.max(1);
+    let cols = cfg.cols.max(1);
+    let cells = cfg.hints.len().min((rows * cols) as usize);
+    let key = &as_letter(key, &cfg.hints[..cells]);
     match key {
         KeyEvent::Close => Ok(ModeTransition::Exit),
         KeyEvent::Undo => Ok(ModeTransition::Back),
@@ -69,9 +74,6 @@ pub(super) fn handle_key<B: Backend>(
             Ok(ModeTransition::Redraw)
         }
         KeyEvent::Char(ch) => {
-            let cfg = &config().bisect;
-            let rows = cfg.rows.max(1);
-            let cols = cfg.cols.max(1);
             let (sub_w_approx, sub_h_approx) = subcell_size(region, rows, cols);
             if sub_w_approx < cfg.min_cell_size || sub_h_approx < cfg.min_cell_size {
                 return Ok(ModeTransition::Stay);
