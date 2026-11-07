@@ -256,7 +256,7 @@ impl Default for KeyBindings {
             macro_menu: Key::Tab,
             macro_record: Key::Char('`'),
             right_click: Key::Delete,
-            middle_click: Key::Insert,
+            middle_click: Key::Char('\\'),
             hover: Key::Char(','),
             scroll_up: Key::Up,
             scroll_down: Key::Down,
