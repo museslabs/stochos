@@ -1,5 +1,6 @@
 use crate::{
     backend::{Backend, KeyEvent},
+    config::config,
     input::InputState,
     macro_store::MacroStore,
     mode::{replay_macro, Mode, ModeTransition},
@@ -20,8 +21,11 @@ pub(super) fn handle_key<B: Backend>(
             target: None,
             drag_origin: None,
         })),
-        KeyEvent::Char(ch) => {
-            if let Some(entry) = macro_store.find_by_key(*ch).cloned() {
+        _ => {
+            let Some(ch) = config().keys.char_of(key) else {
+                return Ok(ModeTransition::Stay);
+            };
+            if let Some(entry) = macro_store.find_by_key(ch).cloned() {
                 replay_macro(&entry.actions, width, height, backend)?;
                 Ok(ModeTransition::Exit)
             } else {
@@ -32,7 +36,6 @@ pub(super) fn handle_key<B: Backend>(
                 }))
             }
         }
-        _ => Ok(ModeTransition::Stay),
     }
 }
 

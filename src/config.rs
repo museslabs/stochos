@@ -329,6 +329,38 @@ impl KeyBindings {
         }
         None
     }
+
+    /// The character on the key behind `event`. Backends turn a key bound to
+    /// an action into that action, so this is how modes that take letters or
+    /// text get the character back.
+    pub fn char_of(&self, event: &KeyEvent) -> Option<char> {
+        let key = match event {
+            KeyEvent::Char(c) => return Some(*c),
+            KeyEvent::Normal => self.normal,
+            KeyEvent::Bisect => self.bisect,
+            KeyEvent::Hint => self.hint,
+            KeyEvent::FreeMode => self.free_mode,
+            KeyEvent::Click => self.click,
+            KeyEvent::ClickStay => self.click_stay,
+            KeyEvent::DoubleClick => self.double_click,
+            KeyEvent::TripleClick => self.triple_click,
+            KeyEvent::RightClick => self.right_click,
+            KeyEvent::MiddleClick => self.middle_click,
+            KeyEvent::Hover => self.hover,
+            KeyEvent::Close => self.close,
+            KeyEvent::Undo => self.undo,
+            KeyEvent::MacroMenu => self.macro_menu,
+            KeyEvent::MacroRecord => self.macro_record,
+            KeyEvent::ScrollUp => self.scroll_up,
+            KeyEvent::ScrollDown => self.scroll_down,
+            KeyEvent::ScrollLeft => self.scroll_left,
+            KeyEvent::ScrollRight => self.scroll_right,
+        };
+        match key {
+            Key::Char(c) => Some(c),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -727,6 +759,38 @@ mod tests {
         let toml = Config::default_toml().unwrap();
         let parsed: Config = toml::from_str(&toml).unwrap();
         assert_eq!(toml::to_string_pretty(&parsed).unwrap(), toml);
+    }
+
+    #[test]
+    fn bound_keys_keep_their_character() {
+        let c = Key::Char;
+        let keys = KeyBindings {
+            normal: c('a'),
+            bisect: c('b'),
+            hint: c('c'),
+            free_mode: c('d'),
+            click: c('e'),
+            click_stay: c('f'),
+            double_click: c('g'),
+            triple_click: c('h'),
+            close: c('i'),
+            undo: c('j'),
+            macro_menu: c('k'),
+            macro_record: c('l'),
+            right_click: c('m'),
+            middle_click: c('n'),
+            hover: c('o'),
+            scroll_up: c('p'),
+            scroll_down: c('q'),
+            scroll_left: c('r'),
+            scroll_right: c('s'),
+        };
+        for ch in 'a'..='s' {
+            let event = keys.to_event(Key::Char(ch)).unwrap();
+            assert_eq!(keys.char_of(&event), Some(ch), "{ch:?}");
+        }
+        assert_eq!(keys.char_of(&KeyEvent::Char('z')), Some('z'));
+        assert_eq!(KeyBindings::default().char_of(&KeyEvent::Click), None);
     }
 
     #[test]

@@ -35,6 +35,25 @@ pub(super) fn move_to_column_center<B: Backend>(
     Ok(())
 }
 
+/// A key that types one of `letters` becomes that letter, even if it is bound.
+/// Close is kept: backends also send it for Cmd+Q and a closed surface.
+pub(super) fn as_letter(key: &KeyEvent, letters: &[char]) -> KeyEvent {
+    match config().keys.char_of(key) {
+        Some(ch) if letters.contains(&ch) && !matches!(key, KeyEvent::Close) => KeyEvent::Char(ch),
+        _ => *key,
+    }
+}
+
+/// No letters on the first key, so the mode keys stay reachable.
+pub(super) fn grid_letters(input_state: &InputState, height: u32) -> &'static [char] {
+    let cfg = config();
+    match input_state {
+        InputState::Second(_) => &cfg.hints()[..cfg.dynamic_rows(height) as usize],
+        InputState::SubFirst { .. } => cfg.sub_hints(),
+        InputState::First | InputState::Ready { .. } => &[],
+    }
+}
+
 pub enum ModeTransition {
     Stay,
     Redraw,
