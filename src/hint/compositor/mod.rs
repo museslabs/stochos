@@ -7,6 +7,7 @@
 //! [`snapshot`] is empty and coordinates are used unshifted (correct on X11).
 
 mod hyprland;
+mod mango;
 mod sway;
 
 /// A compositor-reported window rectangle, in absolute screen coordinates.
@@ -38,7 +39,8 @@ impl CompositorSnapshot {
 
 /// Window geometry from the first provider whose compositor is running.
 pub fn snapshot() -> CompositorSnapshot {
-    hyprland::snapshot()
+    mango::snapshot()
+        .or_else(hyprland::snapshot)
         .or_else(sway::snapshot)
         .unwrap_or_default()
 }
