@@ -363,7 +363,7 @@ impl KeyBindings {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 ///Colors stored as BGRA
 pub struct Colors {
@@ -416,34 +416,44 @@ pub struct Colors {
     #[serde(with = "from_hex")]
     pub hint_dim: [u8; 4],
 }
+/// Formats a BGRA color as `#RRGGBBAA`.
+pub fn color_to_hex(color: [u8; 4]) -> String {
+    format!(
+        "#{:02X}{:02X}{:02X}{:02X}",
+        color[2], color[1], color[0], color[3]
+    )
+}
+
+/// Parses `#RRGGBB` (opaque) or `#RRGGBBAA` into BGRA.
+pub fn color_from_hex(s: &str) -> Option<[u8; 4]> {
+    let hex = s.trim_start_matches("#");
+    let digits = hex.bytes().all(|b| b.is_ascii_hexdigit());
+    let rgba = match (hex.len(), u32::from_str_radix(hex, 16)) {
+        (6, Ok(rgb)) if digits => (rgb << 8) | 0xFF,
+        (8, Ok(rgba)) if digits => rgba,
+        _ => return None,
+    };
+    Some([
+        ((rgba & 0x0000FF00) >> 8) as u8,
+        ((rgba & 0x00FF0000) >> 16) as u8,
+        ((rgba & 0xFF000000) >> 24) as u8,
+        (rgba & 0x000000FF) as u8,
+    ])
+}
+
 mod from_hex {
     use serde::{Deserialize, Deserializer, Serializer};
     pub fn serialize<S: Serializer>(color: &[u8; 4], serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&format!(
-            "#{:02X}{:02X}{:02X}{:02X}",
-            color[2], color[1], color[0], color[3]
-        ))
+        serializer.serialize_str(&super::color_to_hex(*color))
     }
     ///Deserialize from #RRGGBB or #RRGGBBAA to [BB,GG,RR,AA]
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<[u8; 4], D::Error> {
         let s = String::deserialize(deserializer)?;
-        let hex = s.trim_start_matches("#");
-        let digits = hex.bytes().all(|b| b.is_ascii_hexdigit());
-        let rgba = match (hex.len(), u32::from_str_radix(hex, 16)) {
-            (6, Ok(rgb)) if digits => (rgb << 8) | 0xFF,
-            (8, Ok(rgba)) if digits => rgba,
-            _ => {
-                return Err(serde::de::Error::custom(format!(
-                    "invalid color {s:?}, expected #RRGGBB or #RRGGBBAA"
-                )))
-            }
-        };
-        Ok([
-            ((rgba & 0x0000FF00) >> 8) as u8,
-            ((rgba & 0x00FF0000) >> 16) as u8,
-            ((rgba & 0xFF000000) >> 24) as u8,
-            (rgba & 0x000000FF) as u8,
-        ])
+        super::color_from_hex(&s).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "invalid color {s:?}, expected #RRGGBB or #RRGGBBAA"
+            ))
+        })
     }
 }
 
@@ -738,7 +748,7 @@ fn write_default(path: &PathBuf, config: &Config) -> std::io::Result<()> {
     std::fs::write(path, data)
 }
 
-fn config_path() -> PathBuf {
+pub fn config_path() -> PathBuf {
     std::env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {

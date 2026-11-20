@@ -7,6 +7,9 @@ mod macro_replay;
 mod macro_search;
 mod normal;
 mod recording;
+mod settings;
+
+pub use settings::SettingsState;
 
 use std::time::{Duration, Instant};
 
@@ -106,6 +109,7 @@ pub enum Mode {
         typed: Vec<char>,
         target: Option<(u32, u32)>,
     },
+    Settings(Box<SettingsState>),
 }
 
 impl Mode {
@@ -192,6 +196,7 @@ impl Mode {
                 typed,
                 target,
             } => hint::handle_key(key, backend, elements, typed, *target),
+            Mode::Settings(state) => settings::handle_key(key, state),
         }
     }
 
@@ -249,6 +254,7 @@ impl Mode {
             Mode::Hint {
                 elements, typed, ..
             } => hint::draw(backend, pixels, width, height, elements, typed),
+            Mode::Settings(state) => settings::draw(backend, pixels, width, height, state),
         }
     }
 }
