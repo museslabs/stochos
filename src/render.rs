@@ -625,6 +625,107 @@ pub fn render_macro_search(
         .text(b"tab:next enter:select esc:back", colors.text_grey);
 }
 
+/// One line of the settings panel.
+pub struct SettingsRow {
+    pub label: &'static str,
+    pub value: String,
+    /// A color drawn as a small square after the value.
+    pub swatch: Option<[u8; 4]>,
+}
+
+/// The `--config` panel: a list of settings, sample hint chips drawn with
+/// `preview` colors at `hint_scale`, a status line and key help.
+#[allow(clippy::too_many_arguments)]
+pub fn render_settings(
+    buf: &mut [u8],
+    w: u32,
+    h: u32,
+    rows: &[SettingsRow],
+    selected: usize,
+    editing: Option<&[char]>,
+    status: Option<&str>,
+    preview: &crate::config::Colors,
+    hint_scale: u32,
+) {
+    let colors = &config().colors;
+    let scale = config().panel_font_size();
+    let lh = line_height(scale);
+    let chip_h = 8 * hint_scale + 6;
+    let preview_lines = chip_h.div_ceil(lh);
+    let mut p = Panel::with_cols(buf, w, h, rows.len() as u32 + preview_lines + 8, 36);
+    let cw = char_width(scale);
+    let value_x = p.tx + 18 * cw;
+
+    p.text(b"settings", colors.text_first).skip();
+    for (i, row) in rows.iter().enumerate() {
+        let is_selected = i == selected;
+        if is_selected {
+            p.c.fill_rect(
+                p.px + 4,
+                p.ty.saturating_sub(2),
+                p.pw - 8,
+                lh,
+                colors.selected_bg,
+            );
+        }
+        let color = if is_selected {
+            colors.text_highlight
+        } else {
+            colors.text_white
+        };
+        p.c.draw_text(p.tx, p.ty, row.label.as_bytes(), color, scale);
+        match editing.filter(|_| is_selected) {
+            Some(digits) => {
+                p.c.draw_text(value_x, p.ty, b"#", color, scale);
+                p.c.draw_chars(value_x + cw, p.ty, digits, color, scale);
+                let cursor_x = value_x + (1 + digits.len() as u32) * cw;
+                p.c.draw_glyph(cursor_x, p.ty, '_', color, scale);
+            }
+            None => {
+                p.c.draw_text(value_x, p.ty, row.value.as_bytes(), color, scale);
+                if let Some(swatch) = row.swatch {
+                    let sx = value_x + (row.value.len() as u32 + 1) * cw;
+                    let side = 8 * scale;
+                    p.c.fill_rect(sx, p.ty, 2 * side, side, colors.text_grey);
+                    p.c.fill_rect(sx + 1, p.ty + 1, 2 * side - 2, side - 2, swatch);
+                }
+            }
+        }
+        p.skip();
+    }
+
+    p.skip();
+    p.c.draw_text(p.tx, p.ty, b"preview", colors.text_grey, scale);
+    let hint_cw = char_width(hint_scale);
+    let mut x = value_x;
+    for (label, typed, matching) in [
+        ("sd", &['s'][..], true),
+        ("f", &[], true),
+        ("jk", &[], false),
+    ] {
+        let el = HintElement {
+            cx: 0,
+            cy: 0,
+            bbox: (0, 0, 0, 0),
+            label: label.to_string(),
+        };
+        let chip_w = (label.len() as u32 * hint_cw + 8).max(18);
+        draw_hint_chip(
+            &mut p.c, preview, hint_scale, hint_cw, chip_h, &el, x, p.ty, chip_w, typed, matching,
+        );
+        x += chip_w + 8;
+    }
+    p.ty += preview_lines * lh;
+
+    p.skip();
+    match status {
+        Some(status) => p.text(status.as_bytes(), colors.text_first),
+        None => p.skip(),
+    };
+    p.text(b"j/k move  h/l change  enter edit", colors.text_grey)
+        .text(b"s save  esc quit", colors.text_grey);
+}
+
 struct Canvas<'a> {
     buf: &'a mut [u8],
     w: u32,

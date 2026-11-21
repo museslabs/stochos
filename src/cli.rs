@@ -21,6 +21,10 @@ pub struct Args {
     #[arg(long, group = "mode")]
     pub hint: bool,
 
+    /// Open the settings panel to edit and save common options
+    #[arg(long, group = "mode")]
+    pub config: bool,
+
     /// Allow multiple concurrent instances
     #[arg(long)]
     pub allow_multiple: bool,
@@ -47,6 +51,10 @@ impl Args {
 
         if self.hint {
             return InitialMode::Hint;
+        }
+
+        if self.config {
+            return InitialMode::Settings;
         }
 
         InitialMode::Normal

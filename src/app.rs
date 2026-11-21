@@ -3,7 +3,7 @@ use crate::config::config;
 use crate::hint::build_hint_mode;
 use crate::input::InputState;
 use crate::macro_store::MacroStore;
-use crate::mode::{Mode, ModeTransition};
+use crate::mode::{Mode, ModeTransition, SettingsState};
 use crate::render::render_config_error;
 
 #[derive(Clone, Copy)]
@@ -13,6 +13,7 @@ pub enum InitialMode {
     Hint,
     Free,
     FreeCenter,
+    Settings,
 }
 
 pub fn run<B: Backend>(
@@ -58,6 +59,7 @@ pub fn run<B: Backend>(
                 speed: config().free.base_speed.max(1),
             }
         }
+        InitialMode::Settings => Mode::Settings(Box::new(SettingsState::load())),
         InitialMode::FreeCenter => Mode::Free {
             x: w / 2,
             y: h / 2,
@@ -67,7 +69,7 @@ pub fn run<B: Backend>(
 
     if !matches!(
         initial,
-        InitialMode::Free | InitialMode::FreeCenter | InitialMode::Hint
+        InitialMode::Free | InitialMode::FreeCenter | InitialMode::Hint | InitialMode::Settings
     ) {
         backend.move_mouse(w / 2, h / 2)?;
     }
